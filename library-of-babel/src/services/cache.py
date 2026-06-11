@@ -366,15 +366,21 @@ class RedisCache(BookCache[T]):
             payload = {"__type__": "Book", "data": value.to_dict()}
         else:
             payload = {"__type__": "generic", "data": value}
-        return json.dumps(payload).encode("utf-8")
+        try:
+            return json.dumps(payload).encode("utf-8")
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Value for Redis cache key is not JSON-serializable: {e}") from e
     
     def _deserialize(self, data: bytes) -> T:
         """Deserialize a value from Redis."""
         payload = json.loads(data.decode("utf-8"))
+        if "__type__" not in payload or "data" not in payload:
+            raise ValueError("Invalid Redis cache payload format")
+
         value_type = payload.get("__type__")
         if value_type == "Book":
             return Book.from_dict(payload["data"])
-        return payload.get("data")
+        return payload["data"]
 
 
 class AzureBlobCache(BookCache[Book]):

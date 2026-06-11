@@ -141,6 +141,7 @@ async def get_special_books():
         raise HTTPException(status_code=500, detail=f"Failed to generate special books: {e}")
 
 
+# Keep this route below fixed paths (e.g. /random, /range, /special) to avoid shadowing them.
 @router.get("/{book_id}", response_model=dict, summary="Get a book by ID")
 async def get_book_by_id(book_id: str):
     """

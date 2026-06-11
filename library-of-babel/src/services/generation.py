@@ -102,7 +102,7 @@ class BookGenerator:
             # Validate the book number
             if book_number < 0:
                 raise EncodingError(
-                    f"Book number {book_number} is out of range [0, ...)"
+                    f"Book number must be non-negative, got {book_number}"
                 )
             
             # Generate the book
