@@ -100,10 +100,9 @@ class BookGenerator:
         
         try:
             # Validate the book number
-            total_books = self.base25.get_total_books()
-            if book_number < 0 or book_number >= total_books:
+            if book_number < 0:
                 raise EncodingError(
-                    f"Book number {book_number} is out of range [0, {total_books})"
+                    f"Book number {book_number} is out of range [0, ...)"
                 )
             
             # Generate the book

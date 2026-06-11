@@ -18,8 +18,9 @@ class TestBookGenerator:
     
     def test_generate_by_id(self):
         """Test generating a book by ID."""
-        # Generate book 0
-        book = self.generator.generate_by_id("a" * 10)  # Short ID for testing
+        # Generate using a valid book ID derived from book number 0
+        valid_book_id = self.generator.encoder.number_to_book_id(0)
+        book = self.generator.generate_by_id(valid_book_id)
         assert book is not None
         assert book.book_id is not None
         assert book.content is not None

@@ -8,7 +8,7 @@ including its content, structure, and metadata.
 import hashlib
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 
@@ -20,7 +20,7 @@ class BookMetadata:
     """Metadata for a book in the Library of Babel."""
     
     book_id: str
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     generated_at: Optional[datetime] = None
     cached_at: Optional[datetime] = None
     access_count: int = 0
@@ -141,7 +141,7 @@ class Book:
         self.metadata.size_bytes = len(self.content.encode('utf-8'))
         self.metadata.checksum = hashlib.sha256(self.content.encode('utf-8')).hexdigest()
         if not self.metadata.generated_at:
-            self.metadata.generated_at = datetime.utcnow()
+            self.metadata.generated_at = datetime.now(timezone.utc)
     
     def get_page(self, page_num: int) -> List[str]:
         """Get a specific page by number (1-indexed)."""

@@ -8,7 +8,7 @@ of possible books and provides methods for navigation and exploration.
 import math
 import random
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from .book import Book, BookMetadata
@@ -25,7 +25,7 @@ class LibraryStats:
     storage_used_bytes: int = 0
     requests_today: int = 0
     average_generation_time_ms: float = 0.0
-    last_updated: datetime = field(default_factory=datetime.utcnow)
+    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict:
         """Convert stats to dictionary."""
@@ -130,8 +130,8 @@ class Library:
         if book_id in self._book_cache:
             book = self._book_cache[book_id]
             book.metadata.access_count += 1
-            book.metadata.last_accessed = datetime.utcnow()
-            self._access_log.append((book_id, datetime.utcnow()))
+            book.metadata.last_accessed = datetime.now(timezone.utc)
+            self._access_log.append((book_id, datetime.now(timezone.utc)))
             return book
         
         # Generate the book
@@ -139,12 +139,12 @@ class Library:
         
         # Add to cache
         self._book_cache[book_id] = book
-        book.metadata.cached_at = datetime.utcnow()
+        book.metadata.cached_at = datetime.now(timezone.utc)
         
         # Update statistics
         self.stats.cached_books = len(self._book_cache)
         self.stats.requests_today += 1
-        self._access_log.append((book_id, datetime.utcnow()))
+        self._access_log.append((book_id, datetime.now(timezone.utc)))
         
         return book
     
@@ -265,7 +265,7 @@ class Library:
             for book in self._book_cache.values()
         )
         self.stats.storage_used_bytes = storage_used
-        self.stats.last_updated = datetime.utcnow()
+        self.stats.last_updated = datetime.now(timezone.utc)
         
         return self.stats
     

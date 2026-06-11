@@ -173,7 +173,7 @@ https://{your-app-service-name}.azurewebsites.net
 
 ### Endpoints
 
-#### GET /api/book/{book_id}
+#### GET /api/books/{book_id}
 Retrieve a specific book by its identifier.
 
 **Parameters:**
@@ -191,10 +191,10 @@ Retrieve a specific book by its identifier.
 }
 ```
 
-#### GET /api/random
+#### GET /api/books/random
 Get a random book from the library.
 
-**Response:** Same as GET /api/book/{book_id}
+**Response:** Same as GET /api/books/{book_id}
 
 #### GET /api/search
 Search for books containing specific text.
@@ -402,7 +402,7 @@ gunicorn>=21.0.0
 pydantic>=2.5.0
 azure-functions>=1.14.0
 azure-storage-blob>=12.18.0
-azure-cache-redis>=1.7.0
+redis>=5.0.0
 ```
 
 ### Development Dependencies
