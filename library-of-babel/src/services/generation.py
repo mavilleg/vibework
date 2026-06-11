@@ -188,9 +188,10 @@ class BookGenerator:
         special_books.append(self.generate_by_number(1))
         
         # Book with all same character (last character in alphabet)
-        last_char_index = len(self.base25.alphabet) - 1
-        last_char_book = last_char_index * (self.base25.get_total_books() - 1) // (len(self.base25.alphabet) - 1)
-        special_books.append(self.generate_by_number(last_char_book))
+        # Use direct ID construction to avoid astronomically large integer math.
+        last_char = self.base25.alphabet[-1]
+        total_chars = self.config.book.total_chars
+        special_books.append(self.generate_by_id(last_char * total_chars))
         
         # A few random books
         for _ in range(5):
