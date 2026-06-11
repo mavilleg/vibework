@@ -1,0 +1,128 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main, develop, feature/*]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: 'library-of-babel/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          cd library-of-babel
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx pytest-cov
+
+      - name: Run tests with coverage
+        run: |
+          cd library-of-babel
+          python -m pytest tests/ -v --tb=short --cov=src --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: library-of-babel/coverage.xml
+          flags: unittests
+          name: coverage-${{ matrix.python-version }}
+
+  lint:
+    name: Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install linting tools
+        run: |
+          cd library-of-babel
+          pip install black flake8 mypy isort
+
+      - name: Run Black
+        run: |
+          cd library-of-babel
+          black --check src/ tests/ --diff
+
+      - name: Run isort
+        run: |
+          cd library-of-babel
+          isort --check-only src/ tests/
+
+      - name: Run Flake8
+        run: |
+          cd library-of-babel
+          flake8 src/ tests/ --max-line-length=88 --extend-ignore=E203
+
+      - name: Run MyPy
+        run: |
+          cd library-of-babel
+          mypy src/ --ignore-missing-imports --disallow-untyped-defs
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Bandit
+        run: |
+          cd library-of-babel
+          pip install bandit
+          bandit -r src/ -f json -o bandit-results.json || true
+
+      - name: Run Safety
+        run: |
+          cd library-of-babel
+          pip install safety
+          safety check -r requirements.txt --json || true
+
+      - name: Upload security results
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: library-of-babel/*.json
+
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          cd library-of-babel
+          docker build -t library-of-babel:test .
+
+      - name: Run container tests
+        run: |
+          cd library-of-babel
+          docker run --rm library-of-babel:test python -m pytest tests/ -v

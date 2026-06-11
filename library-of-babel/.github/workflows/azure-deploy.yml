@@ -1,0 +1,233 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  AZURE_RESOURCE_GROUP: babel-library-rg
+  AZURE_APP_SERVICE_NAME: babel-library-${{ github.event.inputs.environment || 'staging' }}
+  AZURE_LOCATION: eastus
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'library-of-babel/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          cd library-of-babel
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run tests
+        run: |
+          cd library-of-babel
+          python -m pytest tests/ -v --tb=short
+
+      - name: Run linting
+        run: |
+          cd library-of-babel
+          pip install black flake8 mypy
+          black --check src/ tests/
+          flake8 src/ tests/
+          mypy src/ --ignore-missing-imports
+
+  build:
+    name: Build and Push Container
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.REGISTRY_LOGIN_SERVER }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v4
+        with:
+          context: library-of-babel
+          push: true
+          tags: |
+            ${{ env.REGISTRY_LOGIN_SERVER }}/library-of-babel:${{ github.sha }}
+            ${{ env.REGISTRY_LOGIN_SERVER }}/library-of-babel:latest
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://babel-library-staging.azurewebsites.net
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group (if not exists)
+        run: |
+          az group create --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --location ${{ env.AZURE_LOCATION }} \
+            --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        continue-on-error: true
+
+      - name: Create App Service Plan
+        run: |
+          az appservice plan create --name babel-library-plan \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --sku F1 --is-linux \
+            --location ${{ env.AZURE_LOCATION }} \
+            --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        continue-on-error: true
+
+      - name: Create Storage Account
+        run: |
+          az storage account create --name babellibrary${{ github.run_number }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --sku Standard_LRS \
+            --location ${{ env.AZURE_LOCATION }} \
+            --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }} \
+            --encryption-services blob
+        continue-on-error: true
+
+      - name: Create Redis Cache
+        run: |
+          az redis create --name babel-library-cache \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --sku Basic --vm-size C0 \
+            --location ${{ env.AZURE_LOCATION }} \
+            --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        continue-on-error: true
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.AZURE_APP_SERVICE_NAME }}
+          slot-name: staging
+          publish-profile: ${{ secrets.AZURE_APP_PUBLISH_PROFILE_STAGING }}
+          images: ${{ env.REGISTRY_LOGIN_SERVER }}/library-of-babel:${{ github.sha }}
+
+      - name: Configure App Settings
+        run: |
+          az webapp config appsettings set \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.AZURE_APP_SERVICE_NAME }} \
+            --slot staging \
+            --settings AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+            --settings AZURE_REDIS_CONNECTION_STRING="${{ secrets.AZURE_REDIS_CONNECTION_STRING }}" \
+            --settings AZURE_BLOB_CONTAINER="books" \
+            --settings CACHE_ENABLED="true" \
+            --settings BOOK_PAGES="410" \
+            --settings BOOK_LINES_PER_PAGE="40" \
+            --settings BOOK_CHARS_PER_LINE="80"
+
+      - name: Start Deployment
+        run: |
+          az webapp start \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.AZURE_APP_SERVICE_NAME }} \
+            --slot staging
+
+  deploy-production:
+    name: Deploy to Production
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://babel-library.azurewebsites.net
+    if: github.ref == 'refs/heads/main' && (github.event.inputs.environment == 'production' || github.event_name == 'workflow_dispatch')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Production
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: babel-library-production
+          publish-profile: ${{ secrets.AZURE_APP_PUBLISH_PROFILE_PRODUCTION }}
+          images: ${{ env.REGISTRY_LOGIN_SERVER }}/library-of-babel:${{ github.sha }}
+
+      - name: Configure Production Settings
+        run: |
+          az webapp config appsettings set \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name babel-library-production \
+            --settings AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING_PROD }}" \
+            --settings AZURE_REDIS_CONNECTION_STRING="${{ secrets.AZURE_REDIS_CONNECTION_STRING_PROD }}" \
+            --settings AZURE_BLOB_CONTAINER="books-prod" \
+            --settings CACHE_ENABLED="true" \
+            --settings ENVIRONMENT="production"
+
+      - name: Swap Slots (Blue-Green Deployment)
+        run: |
+          az webapp deployment slot swap \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name babel-library-production \
+            --slot staging \
+            --target-slot production
+
+  cleanup:
+    name: Cleanup Old Resources
+    needs: deploy-production
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Cleanup old container images
+        run: |
+          # Keep last 10 images
+          az acr repository list --name ${{ env.REGISTRY_NAME }} --output tsv | while read repo; do
+            az acr repository show-tags --name ${{ env.REGISTRY_NAME }} --repository $repo --orderby time_desc --output tsv | tail -n +11 | xargs -I {} az acr repository delete --name ${{ env.REGISTRY_NAME }} --repository $repo --tag {} --yes
+          done
+        continue-on-error: true
