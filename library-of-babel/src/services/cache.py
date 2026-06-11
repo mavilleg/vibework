@@ -361,7 +361,7 @@ class RedisCache(BookCache[T]):
         return self.stats
     
     def _serialize(self, value: T) -> bytes:
-        """Serialize a value for storage in Redis."""
+        """Serialize supported cache values for Redis (Book or JSON-serializable values)."""
         if isinstance(value, Book):
             payload = {"__type__": "Book", "data": value.to_dict()}
         else:
