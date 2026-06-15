@@ -4,9 +4,20 @@ from src.main import app
 from src.services.search import SearchStats
 
 
+def _collect_paths(routes: list) -> list[str]:
+    """Collect route paths, descending into _IncludedRouter wrappers."""
+    paths: list[str] = []
+    for route in routes:
+        if hasattr(route, "path"):
+            paths.append(route.path)
+        elif hasattr(route, "original_router"):
+            paths.extend(_collect_paths(route.original_router.routes))
+    return paths
+
+
 def test_books_route_specific_paths_precede_dynamic_path() -> None:
     """Ensure fixed `/api/books` routes are matched before `/{book_id}`."""
-    paths = [route.path for route in app.routes if hasattr(route, "path")]
+    paths = _collect_paths(app.routes)
 
     dynamic_index = paths.index("/api/books/{book_id}")
     assert paths.index("/api/books/random") < dynamic_index
