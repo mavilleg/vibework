@@ -5,10 +5,6 @@ This module provides the API endpoints for retrieving and exploring books.
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
-
-from ..config import get_config
-from ..models.book import Book
 from ..models.encoding import EncodingError
 from ..services.generation import BookGenerator
 from ..services.cache import create_cache
@@ -18,42 +14,6 @@ router = APIRouter(prefix="/api/books", tags=["books"])
 # Initialize services
 generator = BookGenerator()
 cache = create_cache()
-
-
-@router.get("/{book_id}", response_model=dict, summary="Get a book by ID")
-async def get_book_by_id(book_id: str):
-    """
-    Retrieve a specific book by its identifier.
-    
-    The book ID is a base-25 encoded string that uniquely identifies
-    a book in the Library of Babel.
-    
-    Args:
-        book_id: The unique book identifier
-    
-    Returns:
-        The book data including content, pages, and metadata
-    
-    Raises:
-        HTTPException: If the book ID is invalid
-    """
-    # Check cache first
-    cached_book = cache.get(book_id)
-    if cached_book:
-        return cached_book.to_dict()
-    
-    try:
-        book = generator.generate_by_id(book_id)
-        
-        # Cache the book
-        cache.set(book_id, book)
-        
-        return book.to_dict()
-        
-    except EncodingError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate book: {e}")
 
 
 @router.get("/number/{book_number}", response_model=dict, summary="Get a book by number")
@@ -179,6 +139,43 @@ async def get_special_books():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate special books: {e}")
+
+
+# Keep this route below /random, /range, and /special to avoid shadowing them.
+@router.get("/{book_id}", response_model=dict, summary="Get a book by ID")
+async def get_book_by_id(book_id: str):
+    """
+    Retrieve a specific book by its identifier.
+    
+    The book ID is a base-25 encoded string that uniquely identifies
+    a book in the Library of Babel.
+    
+    Args:
+        book_id: The unique book identifier
+    
+    Returns:
+        The book data including content, pages, and metadata
+    
+    Raises:
+        HTTPException: If the book ID is invalid
+    """
+    # Check cache first
+    cached_book = cache.get(book_id)
+    if cached_book:
+        return cached_book.to_dict()
+    
+    try:
+        book = generator.generate_by_id(book_id)
+        
+        # Cache the book
+        cache.set(book_id, book)
+        
+        return book.to_dict()
+        
+    except EncodingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate book: {e}")
 
 
 @router.get("/{book_id}/page/{page_num}", response_model=dict, summary="Get a specific page")

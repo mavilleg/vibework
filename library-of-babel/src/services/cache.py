@@ -6,9 +6,10 @@ reducing generation time and improving performance.
 """
 
 import time
+import json
+import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from dataclasses import dataclass
 from typing import Dict, Optional, TypeVar, Generic
 
 from ..config import get_config
@@ -16,6 +17,7 @@ from ..models.book import Book
 
 
 T = TypeVar('T')
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -294,7 +296,7 @@ class RedisCache(BookCache[T]):
             return self._deserialize(value)
             
         except Exception as e:
-            # Log error and treat as miss
+            logger.warning("Redis cache get failed for key %s: %s", key, e)
             self.stats.misses += 1
             return None
     
@@ -312,8 +314,7 @@ class RedisCache(BookCache[T]):
             self.client.setex(key, ttl or self.default_ttl, serialized)
             self.stats.size = self.client.dbsize()
         except Exception as e:
-            # Log error
-            pass
+            logger.warning("Redis cache set failed for key %s: %s", key, e)
     
     def delete(self, key: str) -> None:
         """
@@ -324,16 +325,16 @@ class RedisCache(BookCache[T]):
         """
         try:
             self.client.delete(key)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Redis cache delete failed for key %s: %s", key, e)
     
     def clear(self) -> None:
         """Clear all items from the cache."""
         try:
             self.client.flushdb()
             self.stats.size = 0
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Redis cache clear failed: %s", e)
     
     def exists(self, key: str) -> bool:
         """
@@ -347,26 +348,39 @@ class RedisCache(BookCache[T]):
         """
         try:
             return self.client.exists(key) == 1
-        except Exception:
+        except Exception as e:
+            logger.warning("Redis cache exists check failed for key %s: %s", key, e)
             return False
     
     def get_stats(self) -> CacheStats:
         """Get cache statistics."""
         try:
             self.stats.size = self.client.dbsize()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Redis cache stats retrieval failed: %s", e)
         return self.stats
     
     def _serialize(self, value: T) -> bytes:
-        """Serialize a value for storage in Redis."""
-        import pickle
-        return pickle.dumps(value)
+        """Serialize supported cache values for Redis (Book or JSON-serializable values)."""
+        if isinstance(value, Book):
+            payload = {"__type__": "Book", "data": value.to_dict()}
+        else:
+            payload = {"__type__": "generic", "data": value}
+        try:
+            return json.dumps(payload).encode("utf-8")
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Value for Redis cache key is not JSON-serializable: {e}") from e
     
     def _deserialize(self, data: bytes) -> T:
         """Deserialize a value from Redis."""
-        import pickle
-        return pickle.loads(data)
+        payload = json.loads(data.decode("utf-8"))
+        if "__type__" not in payload or "data" not in payload:
+            raise ValueError("Invalid Redis cache payload format")
+
+        value_type = payload.get("__type__")
+        if value_type == "Book":
+            return Book.from_dict(payload["data"])
+        return payload["data"]
 
 
 class AzureBlobCache(BookCache[Book]):
@@ -438,7 +452,8 @@ class AzureBlobCache(BookCache[Book]):
             self.stats.hits += 1
             return book
             
-        except Exception:
+        except Exception as e:
+            logger.warning("Azure blob cache get failed for key %s: %s", key, e)
             self.stats.misses += 1
             return None
     
@@ -462,8 +477,8 @@ class AzureBlobCache(BookCache[Book]):
             
             self.stats.size = self.container_client.get_container_properties().blob_count
             
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Azure blob cache set failed for key %s: %s", key, e)
     
     def delete(self, key: str) -> None:
         """
@@ -475,8 +490,8 @@ class AzureBlobCache(BookCache[Book]):
         try:
             blob_client = self.container_client.get_blob_client(key)
             blob_client.delete_blob()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Azure blob cache delete failed for key %s: %s", key, e)
     
     def clear(self) -> None:
         """Clear all books from the cache."""
@@ -487,8 +502,8 @@ class AzureBlobCache(BookCache[Book]):
                 blob_client = self.container_client.get_blob_client(blob.name)
                 blob_client.delete_blob()
             self.stats.size = 0
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Azure blob cache clear failed: %s", e)
     
     def exists(self, key: str) -> bool:
         """
@@ -503,15 +518,16 @@ class AzureBlobCache(BookCache[Book]):
         try:
             blob_client = self.container_client.get_blob_client(key)
             return blob_client.exists()
-        except Exception:
+        except Exception as e:
+            logger.warning("Azure blob cache exists check failed for key %s: %s", key, e)
             return False
     
     def get_stats(self) -> CacheStats:
         """Get cache statistics."""
         try:
             self.stats.size = self.container_client.get_container_properties().blob_count
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Azure blob cache stats retrieval failed: %s", e)
         return self.stats
 
 
@@ -546,14 +562,16 @@ def create_cache() -> BookCache[Book]:
     if cache_config.backend == "redis":
         try:
             return RedisCache()
-        except Exception:
+        except Exception as e:
+            logger.warning("Redis cache unavailable, falling back to memory cache: %s", e)
             # Fall back to memory cache
             pass
     
     if cache_config.backend == "azure":
         try:
             return AzureBlobCache()
-        except Exception:
+        except Exception as e:
+            logger.warning("Azure blob cache unavailable, falling back to memory cache: %s", e)
             # Fall back to memory cache
             pass
     

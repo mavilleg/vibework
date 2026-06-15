@@ -46,6 +46,7 @@ class SearchStats:
     total_searches: int = 0
     total_books_searched: int = 0
     total_matches: int = 0
+    total_time_ms: float = 0.0
     average_search_time_ms: float = 0.0
     last_search_time_ms: float = 0.0
     
@@ -54,9 +55,10 @@ class SearchStats:
         self.total_searches += 1
         self.total_books_searched += books_searched
         self.total_matches += matches
+        self.total_time_ms += time_ms
         self.last_search_time_ms = time_ms
         self.average_search_time_ms = (
-            self.total_books_searched / self.total_searches 
+            self.total_time_ms / self.total_searches
             if self.total_searches > 0 else 0
         )
 
