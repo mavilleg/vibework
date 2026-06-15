@@ -100,21 +100,29 @@ docker run -p 8000:8000 library-of-babel
 
 ### Option 1: GitHub Actions (Recommended)
 
-This repository includes a GitHub Actions workflow for automatic deployment to Azure.
+This repository includes a GitHub Actions workflow at `.github/workflows/azure-deploy.yml` for automatic deployment to Azure App Service.
 
-1. **Enable Azure Integration in GitHub**
+1. **Create Azure resources once**
+   - Create an Azure App Service for Containers
+   - Create or choose an Azure Container Registry (ACR)
+   - Note the App Service name, resource group, and ACR login server
+
+2. **Enable Azure integration in GitHub**
    - Go to your GitHub repository Settings
-   - Navigate to "Secrets and variables" > "Actions"
+   - Navigate to **Secrets and variables** > **Actions**
    - Add the following secrets:
      - `AZURE_CREDENTIALS`: JSON output from `az ad sp create-for-rbac`
-     - `AZURE_SUBSCRIPTION_ID`: Your Azure subscription ID
-     - `AZURE_RESOURCE_GROUP`: Your resource group name
+     - `AZURE_APP_SERVICE_NAME`: Your Azure Web App name
+     - `AZURE_RESOURCE_GROUP`: Your Azure resource group
+     - `REGISTRY_LOGIN_SERVER`: Your ACR login server (for example `babellibraryacr.azurecr.io`)
+     - `REGISTRY_USERNAME`: Your ACR username
+     - `REGISTRY_PASSWORD`: Your ACR password
 
-2. **Deploy**
-   - Push to main branch or create a release
-   - GitHub Actions will automatically deploy to Azure
+3. **Deploy**
+   - Push changes to `main`, or run the **Deploy to Azure** workflow manually from the Actions tab
+   - GitHub Actions will test the app, build the container from `library-of-babel`, push it to ACR, and update the Azure Web App container
 
-### Option 2: Manual Deployment via Azure Portal
+### Option 2: Manual Deployment via Azure CLI
 
 1. **Create Resources**
 ```bash
@@ -124,11 +132,20 @@ az login
 # Create resource group
 az group create --name babel-library-rg --location eastus
 
-# Create App Service
+# Create App Service plan and Linux web app
+az appservice plan create --name babel-library-plan \
+  --resource-group babel-library-rg \
+  --is-linux --sku B1
+
 az webapp create --resource-group babel-library-rg \
+  --plan babel-library-plan \
   --name babel-library-api \
-  --runtime "PYTHON:3.10" \
-  --startup-file "gunicorn -k uvicorn.workers.AsyncIOMworker -w 4 -b :$PORT src.main:app"
+  --deployment-container-image-name babellibraryacr.azurecr.io/library-of-babel:latest
+
+# Create Azure Container Registry
+az acr create --resource-group babel-library-rg \
+  --name babellibraryacr \
+  --sku Basic
 
 # Create Storage Account
 az storage account create --resource-group babel-library-rg \
@@ -144,9 +161,15 @@ az redis create --resource-group babel-library-rg \
 
 2. **Deploy Code**
 ```bash
-# Deploy via Azure CLI
-az webapp up --name babel-library-api --resource-group babel-library-rg \
-  --sku F1 --runtime "PYTHON:3.10"
+# Build and push the container
+az acr build --registry babellibraryacr --image library-of-babel:latest .
+
+# Point the web app at the pushed container
+az webapp config container set \
+  --name babel-library-api \
+  --resource-group babel-library-rg \
+  --container-image-name babellibraryacr.azurecr.io/library-of-babel:latest \
+  --container-registry-url https://babellibraryacr.azurecr.io
 ```
 
 ### Option 3: Azure Container Instances
@@ -376,20 +399,14 @@ library-of-babel/
 │   ├── architecture.md           # Architecture overview
 │   └── research.md               # Research notes
 ├── scripts/                      # Utility scripts
-│   ├── deploy_azure.py           # Azure deployment script
-│   └── generate_sample.py        # Sample book generator
-├── config/                       # Configuration files
-│   ├── azure.json                # Azure configuration
-│   └── settings.json             # Application settings
-├── .github/
-│   └── workflows/
-│       ├── azure-deploy.yml      # Azure deployment workflow
-│       └── ci.yml                # Continuous integration
+│   └── test_basic.py             # Basic project smoke test
 ├── requirements.txt              # Python dependencies
 ├── Dockerfile                    # Docker configuration
 ├── .dockerignore
 ├── .gitignore
 └── README.md                     # This file
+
+GitHub workflows live at the repository root in `.github/workflows/`.
 ```
 
 ## 📦 Dependencies
