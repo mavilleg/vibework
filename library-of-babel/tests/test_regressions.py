@@ -5,12 +5,18 @@ from src.services.search import SearchStats
 
 
 def _collect_paths(routes: list) -> list[str]:
-    """Collect route paths, descending into _IncludedRouter wrappers."""
+    """Collect route paths from a list of routes.
+
+    Handles both plain routes (which expose a ``path`` attribute directly) and
+    FastAPI's ``_IncludedRouter`` wrapper objects (introduced in 0.137.x) which
+    store the underlying ``APIRouter`` on ``original_router``.  The function
+    recurses so that arbitrarily nested routers are handled correctly.
+    """
     paths: list[str] = []
     for route in routes:
         if hasattr(route, "path"):
             paths.append(route.path)
-        elif hasattr(route, "original_router"):
+        elif hasattr(route, "original_router") and hasattr(route.original_router, "routes"):
             paths.extend(_collect_paths(route.original_router.routes))
     return paths
 
