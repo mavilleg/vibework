@@ -1,0 +1,123 @@
+<div>
+    <div class="flex justify-between items-start mb-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ task.title }}</h1>
+            <p class="text-gray-500 mt-1">
+                Submitted by {{ task.author.username if task.author else 'Unknown' }} • 
+                {{ task.created_at.strftime('%B %d, %Y') }}
+            </p>
+        </div>
+        <div class="flex gap-2">
+            <span class="px-3 py-1 rounded-full text-sm font-medium category-{{ task.category }}">
+                {{ task.category }}
+            </span>
+            <span class="px-3 py-1 rounded-full text-sm font-medium difficulty-{{ task.difficulty }}">
+                Difficulty: {{ task.difficulty }}/5
+            </span>
+        </div>
+    </div>
+    
+    <div class="prose max-w-none mb-6">
+        <p class="text-gray-700">{{ task.description }}</p>
+    </div>
+    
+    {% if task.is_objective %}
+    <div class="bg-blue-50 p-4 rounded-lg mb-6">
+        <p class="text-sm text-blue-800">
+            <strong>Objective Task:</strong> This task has a correct answer and can be auto-scored.
+        </p>
+    </div>
+    {% endif %}
+    
+    <div class="grid md:grid-cols-2 gap-6">
+        <!-- Submit Solution -->
+        <div class="bg-white p-4 rounded-lg shadow-sm border">
+            <h2 class="text-lg font-semibold mb-4">Submit a Solution</h2>
+            <form 
+                hx-post="/solutions" 
+                hx-target="#solution-response" 
+                hx-swap="innerHTML"
+                class="space-y-4"
+            >
+                <input type="hidden" name="task_id" value="{{ task.id }}">
+                
+                <div>
+                    <label for="model_name" class="block text-sm font-medium text-gray-700 mb-1">Model Name</label>
+                    <input 
+                        type="text" 
+                        id="model_name" 
+                        name="model_name" 
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="e.g., gpt-4, llama-3-70b"
+                    >
+                </div>
+                
+                <div>
+                    <label for="answer" class="block text-sm font-medium text-gray-700 mb-1">Answer</label>
+                    <textarea 
+                        id="answer" 
+                        name="answer" 
+                        rows="4" 
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="Your solution..."
+                    ></textarea>
+                </div>
+                
+                <button 
+                    type="submit" 
+                    class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                >
+                    Submit Solution
+                </button>
+            </form>
+            
+            <div id="solution-response" class="mt-4"></div>
+        </div>
+        
+        <!-- Solutions List -->
+        <div class="bg-white p-4 rounded-lg shadow-sm border">
+            <h2 class="text-lg font-semibold mb-4">Recent Solutions</h2>
+            <div id="solutions-list">
+                {% for solution in task.solutions[:5] %}
+                <div class="border-b last:border-b-0 pb-3 mb-3">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-medium">{{ solution.model_name }}</p>
+                            <p class="text-sm text-gray-500">
+                                Submitted by {{ solution.author.username if solution.author else 'Unknown' }} • 
+                                {{ solution.created_at.strftime('%B %d, %Y') }}
+                            </p>
+                        </div>
+                        <div class="flex gap-2">
+                            {% for score in solution.scores %}
+                            <span class="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                                Score: {{ score.score }}/100
+                            </span>
+                            {% endfor %}
+                            <button 
+                                hx-post="/challenges" 
+                                hx-vals='{"solution_id": {{ solution.id }}}' 
+                                hx-target="#challenge-modal-{{ solution.id }}" 
+                                hx-swap="innerHTML"
+                                class="px-3 py-1 text-xs bg-red-100 text-red-800 rounded hover:bg-red-200 transition"
+                            >
+                                Challenge
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-700 mt-2">{{ solution.answer[:100] }}{% if solution.answer|length > 100 %}...{% endif %}</p>
+                </div>
+                {% endfor %}
+                {% if not task.solutions %}
+                <p class="text-gray-500 text-sm">No solutions yet. Be the first to submit one!</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="mt-6">
+        <a href="/tasks" class="text-gray-600 hover:text-indigo-600">← Back to Tasks</a>
+    </div>
+</div>

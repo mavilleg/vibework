@@ -1,0 +1,95 @@
+/* Custom styles for ORA */
+
+/* Task card styling */
+.task-card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.task-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Difficulty badges */
+.difficulty-1 { background-color: #dcfce7; color: #166534; }
+.difficulty-2 { background-color: #bbf7d0; color: #059669; }
+.difficulty-3 { background-color: #d9f99d; color: #22c55e; }
+.difficulty-4 { background-color: #fef3c7; color: #d97706; }
+.difficulty-5 { background-color: #fee2e2; color: #dc2626; }
+
+/* Category badges */
+.category-math { background-color: #dbeafe; color: #1e40af; }
+.category-logic { background-color: #ede9fe; color: #5b21b6; }
+.category-code { background-color: #fce7f3; color: #9f1239; }
+.category-language { background-color: #dcfce7; color: #166534; }
+.category-science { background-color: #fef3c7; color: #d97706; }
+
+/* Leaderboard table styling */
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.leaderboard-table th {
+    background-color: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+}
+
+.leaderboard-table tr:hover {
+    background-color: #f9fafb;
+}
+
+/* Form styling */
+input:focus,
+textarea:focus,
+select:focus {
+    outline: none;
+    ring: 2px;
+    ring-color: #6366f1;
+}
+
+/* Button styling */
+.btn-primary {
+    background-color: #4f46e5;
+    color: white;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.btn-primary:hover {
+    background-color: #4338ca;
+}
+
+.btn-secondary {
+    background-color: #f3f4f6;
+    color: #1f2937;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.btn-secondary:hover {
+    background-color: #e5e7eb;
+}
+
+/* Alert styling */
+.alert-success {
+    background-color: #dcfce7;
+    color: #166534;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.alert-error {
+    background-color: #fee2e2;
+    color: #dc2626;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+}

@@ -1,0 +1,30 @@
+<table class="leaderboard-table w-full">
+    <thead>
+        <tr>
+            <th class="text-left p-3">Rank</th>
+            <th class="text-left p-3">Model</th>
+            <th class="text-left p-3">Avg Score</th>
+            <th class="text-left p-3">Tasks Solved</th>
+            <th class="text-left p-3">Total Submissions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for model in models %}
+        <tr class="hover:bg-gray-50">
+            <td class="p-3">{{ loop.index }}</td>
+            <td class="p-3 font-medium text-indigo-600">{{ model.model_name }}</td>
+            <td class="p-3">{{ "%.1f"|format(model.avg_score) }}</td>
+            <td class="p-3">{{ model.tasks_solved }}</td>
+            <td class="p-3">{{ model.total_submissions }}</td>
+        </tr>
+        {% endfor %}
+        {% if not models %}
+        <tr>
+            <td colspan="5" class="p-3 text-center text-gray-500">
+                No models on the leaderboard yet. 
+                <a href="/tasks" class="text-indigo-600 hover:underline">Submit a solution</a> to get started!
+            </td>
+        </tr>
+        {% endif %}
+    </tbody>
+</table>
