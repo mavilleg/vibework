@@ -93,7 +93,7 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build image
-        if: steps.deployment-mode.outputs.enabled != 'true'
+        if: steps.deployment-mode.outputs.enabled == 'false'
         uses: docker/build-push-action@v6
         with:
           context: ./library-of-babel
