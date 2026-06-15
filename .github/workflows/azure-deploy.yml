@@ -1,0 +1,100 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "library-of-babel/**"
+      - ".github/workflows/azure-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.10"
+  WORKING_DIRECTORY: library-of-babel
+  IMAGE_NAME: library-of-babel
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/requirements.txt
+
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run test suite
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: python -m pytest -q
+
+  build-and-deploy:
+    name: Build and deploy container
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_LOGIN_SERVER }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./library-of-babel
+          file: ./library-of-babel/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Configure Web App container
+        run: |
+          az webapp config container set \
+            --name "${{ secrets.AZURE_APP_SERVICE_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --docker-custom-image-name "${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            --docker-registry-server-url "https://${{ secrets.REGISTRY_LOGIN_SERVER }}" \
+            --docker-registry-server-user "${{ secrets.REGISTRY_USERNAME }}" \
+            --docker-registry-server-password "${{ secrets.REGISTRY_PASSWORD }}"
+
+      - name: Configure Web App settings
+        run: |
+          az webapp config appsettings set \
+            --name "${{ secrets.AZURE_APP_SERVICE_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --settings WEBSITES_PORT=8000 SCM_DO_BUILD_DURING_DEPLOYMENT=false
+
+      - name: Restart Web App
+        run: |
+          az webapp restart \
+            --name "${{ secrets.AZURE_APP_SERVICE_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"
