@@ -114,7 +114,7 @@ This repository includes a GitHub Actions workflow at `.github/workflows/azure-d
      - `AZURE_CREDENTIALS`: JSON output from `az ad sp create-for-rbac`
      - `AZURE_APP_SERVICE_NAME`: Your Azure Web App name
      - `AZURE_RESOURCE_GROUP`: Your Azure resource group
-     - `REGISTRY_LOGIN_SERVER`: Your ACR login server (for example `example.azurecr.io`)
+     - `REGISTRY_LOGIN_SERVER`: Your ACR login server (for example `babellibraryacr.azurecr.io`)
      - `REGISTRY_USERNAME`: Your ACR username
      - `REGISTRY_PASSWORD`: Your ACR password
 
@@ -140,7 +140,7 @@ az appservice plan create --name babel-library-plan \
 az webapp create --resource-group babel-library-rg \
   --plan babel-library-plan \
   --name babel-library-api \
-  --deployment-container-image-name nginx
+  --deployment-container-image-name babellibraryacr.azurecr.io/library-of-babel:latest
 
 # Create Azure Container Registry
 az acr create --resource-group babel-library-rg \
