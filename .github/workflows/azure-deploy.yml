@@ -54,14 +54,55 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Determine deployment mode
+        id: deployment-mode
+        env:
+          AZURE_APP_SERVICE_NAME: ${{ secrets.AZURE_APP_SERVICE_NAME }}
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          REGISTRY_LOGIN_SERVER: ${{ secrets.REGISTRY_LOGIN_SERVER }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+        run: |
+          missing_secrets=""
+          for secret_name in \
+            AZURE_APP_SERVICE_NAME \
+            AZURE_CREDENTIALS \
+            AZURE_RESOURCE_GROUP \
+            REGISTRY_LOGIN_SERVER \
+            REGISTRY_PASSWORD \
+            REGISTRY_USERNAME; do
+            if [ -z "${!secret_name}" ]; then
+              missing_secrets="${missing_secrets}${missing_secrets:+, }${secret_name}"
+            fi
+          done
+
+          if [ -n "$missing_secrets" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping container push and Azure deployment because these required secrets are not configured: $missing_secrets"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Log in to Azure Container Registry
+        if: steps.deployment-mode.outputs.enabled == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ secrets.REGISTRY_LOGIN_SERVER }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
+      - name: Build image
+        if: steps.deployment-mode.outputs.enabled == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./library-of-babel
+          file: ./library-of-babel/Dockerfile
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
       - name: Build and push image
+        if: steps.deployment-mode.outputs.enabled == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ./library-of-babel
@@ -72,11 +113,13 @@ jobs:
             ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Log in to Azure
+        if: steps.deployment-mode.outputs.enabled == 'true'
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Configure Web App container
+        if: steps.deployment-mode.outputs.enabled == 'true'
         run: |
           az webapp config container set \
             --name "${{ secrets.AZURE_APP_SERVICE_NAME }}" \
@@ -87,6 +130,7 @@ jobs:
             --docker-registry-server-password "${{ secrets.REGISTRY_PASSWORD }}"
 
       - name: Configure Web App settings
+        if: steps.deployment-mode.outputs.enabled == 'true'
         run: |
           az webapp config appsettings set \
             --name "${{ secrets.AZURE_APP_SERVICE_NAME }}" \
@@ -94,6 +138,7 @@ jobs:
             --settings WEBSITES_PORT=8000 SCM_DO_BUILD_DURING_DEPLOYMENT=false
 
       - name: Restart Web App
+        if: steps.deployment-mode.outputs.enabled == 'true'
         run: |
           az webapp restart \
             --name "${{ secrets.AZURE_APP_SERVICE_NAME }}" \
