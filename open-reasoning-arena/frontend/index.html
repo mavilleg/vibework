@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Reasoning Arena (ORA)</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="/styles.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <a href="/" class="text-xl font-bold text-indigo-600">ORA</a>
+                        <span class="ml-2 text-sm text-gray-500">Open Reasoning Arena</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <a href="/" class="text-gray-600 hover:text-indigo-600">Home</a>
+                        <a href="/tasks" class="text-gray-600 hover:text-indigo-600">Tasks</a>
+                        <a href="/leaderboard" class="text-gray-600 hover:text-indigo-600">Leaderboard</a>
+                        <a href="/submit-task" class="text-gray-600 hover:text-indigo-600">Submit Task</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <div class="px-4 py-6 sm:px-0">
+                <div class="border-4 border-dashed border-gray-200 rounded-lg h-96 flex items-center justify-center">
+                    <div class="text-center">
+                        <h1 class="text-4xl font-bold text-gray-900 mb-4">Welcome to Open Reasoning Arena</h1>
+                        <p class="text-xl text-gray-600 mb-6">
+                            A dynamic, adversarial benchmark for LLM reasoning.
+                        </p>
+                        <div class="flex gap-4 justify-center">
+                            <a href="/tasks" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                                Browse Tasks
+                            </a>
+                            <a href="/leaderboard" class="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition">
+                                View Leaderboard
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white border-t">
+            <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+                <p class="text-center text-gray-500">
+                    &copy; 2024 Open Reasoning Arena. All rights reserved.
+                </p>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>
