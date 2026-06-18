@@ -14,6 +14,7 @@ from typing import Dict, Optional, TypeVar, Generic, Any
 from collections import OrderedDict
 
 from .config import get_config
+from .monitoring import CACHE_HITS, CACHE_MISSES, CACHE_EVICTIONS
 
 
 T = TypeVar('T')
@@ -115,6 +116,7 @@ class MemoryCache(Cache[T]):
         """
         if key not in self._cache:
             self.stats.misses += 1
+            CACHE_MISSES.labels(cache_type=self._get_cache_type()).inc()
             return None
         
         item = self._cache[key]
@@ -123,6 +125,7 @@ class MemoryCache(Cache[T]):
         if item["expires_at"] and item["expires_at"] < time.time():
             self.delete(key)
             self.stats.misses += 1
+            CACHE_MISSES.labels(cache_type=self._get_cache_type()).inc()
             return None
         
         # Update access time and move to end (mark as recently used)
@@ -130,7 +133,13 @@ class MemoryCache(Cache[T]):
         item["accessed_at"] = time.time()
         
         self.stats.hits += 1
+        CACHE_HITS.labels(cache_type=self._get_cache_type()).inc()
         return item["value"]
+    
+    def _get_cache_type(self) -> str:
+        """Get the cache type for metrics."""
+        # This will be overridden by subclasses
+        return "unknown"
     
     def set(self, key: str, value: T, ttl: Optional[int] = None) -> None:
         """
@@ -207,6 +216,7 @@ class MemoryCache(Cache[T]):
         del self._cache[oldest_key]
         self.stats.evictions += 1
         self.stats.size = len(self._cache)
+        CACHE_EVICTIONS.labels(cache_type=self._get_cache_type()).inc()
     
     def get_stats(self) -> CacheStats:
         """Get cache statistics."""
@@ -214,42 +224,61 @@ class MemoryCache(Cache[T]):
         return self.stats
 
 
+# Cache subclasses with proper cache type for metrics
+class TasksCache(MemoryCache):
+    """Cache for tasks with 'tasks' cache type."""
+    def _get_cache_type(self) -> str:
+        return "tasks"
+
+
+class SolutionsCache(MemoryCache):
+    """Cache for solutions with 'solutions' cache type."""
+    def _get_cache_type(self) -> str:
+        return "solutions"
+
+
+class LeaderboardCache(MemoryCache):
+    """Cache for leaderboard with 'leaderboard' cache type."""
+    def _get_cache_type(self) -> str:
+        return "leaderboard"
+
+
 # Singleton cache instance
-_tasks_cache: Optional[MemoryCache] = None
-_solutions_cache: Optional[MemoryCache] = None
-_leaderboard_cache: Optional[MemoryCache] = None
+_tasks_cache: Optional[TasksCache] = None
+_solutions_cache: Optional[SolutionsCache] = None
+_leaderboard_cache: Optional[LeaderboardCache] = None
 
 
-def get_tasks_cache() -> MemoryCache:
+def get_tasks_cache() -> TasksCache:
     """Get or create the tasks cache."""
     global _tasks_cache
     if _tasks_cache is None:
         config = get_config()
-        _tasks_cache = MemoryCache(
+        _tasks_cache = TasksCache(
             max_size=config.cache.max_size,
             ttl=config.cache.ttl
         )
     return _tasks_cache
 
 
-def get_solutions_cache() -> MemoryCache:
+def get_solutions_cache() -> SolutionsCache:
     """Get or create the solutions cache."""
     global _solutions_cache
     if _solutions_cache is None:
         config = get_config()
-        _solutions_cache = MemoryCache(
+        _solutions_cache = SolutionsCache(
             max_size=config.cache.max_size,
             ttl=config.cache.ttl
         )
     return _solutions_cache
 
 
-def get_leaderboard_cache() -> MemoryCache:
+def get_leaderboard_cache() -> LeaderboardCache:
     """Get or create the leaderboard cache."""
     global _leaderboard_cache
     if _leaderboard_cache is None:
         config = get_config()
-        _leaderboard_cache = MemoryCache(
+        _leaderboard_cache = LeaderboardCache(
             max_size=config.cache.max_size // 10,  # Smaller cache for leaderboard
             ttl=config.cache.ttl // 6  # Shorter TTL for leaderboard
         )
