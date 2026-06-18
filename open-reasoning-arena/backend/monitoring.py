@@ -176,6 +176,53 @@ LEADERBOARD_TOP_SCORE = Gauge(
 )
 
 
+# Authentication metrics
+AUTH_TOKEN_CREATED = Counter(
+    "ora_auth_tokens_created_total",
+    "Total number of authentication tokens created",
+    ["token_type"],
+)
+
+AUTH_TOKEN_VALIDATED = Counter(
+    "ora_auth_tokens_validated_total",
+    "Total number of authentication tokens validated",
+    ["token_type"],
+)
+
+AUTH_TOKEN_INVALIDATED = Counter(
+    "ora_auth_tokens_invalidated_total",
+    "Total number of authentication tokens invalidated",
+    ["reason"],
+)
+
+AUTH_TOKEN_REFRESHED = Counter(
+    "ora_auth_tokens_refreshed_total",
+    "Total number of authentication tokens refreshed",
+)
+
+AUTH_LOGIN_ATTEMPTS = Counter(
+    "ora_auth_login_attempts_total",
+    "Total number of login attempts",
+    ["status"],  # success, failure
+)
+
+AUTH_LOGIN_FAILURES = Counter(
+    "ora_auth_login_failures_total",
+    "Total number of login failures",
+    ["reason"],  # user_not_found, invalid_password, user_inactive
+)
+
+AUTH_ACTIVE_SESSIONS = Gauge(
+    "ora_auth_active_sessions",
+    "Number of active authentication sessions",
+)
+
+AUTH_USERS_REGISTERED = Counter(
+    "ora_auth_users_registered_total",
+    "Total number of users registered",
+)
+
+
 # ==================== MONITORING MIDDLEWARE ====================
 
 class MonitoringMiddleware:
@@ -347,6 +394,17 @@ def increment_rate_limit(endpoint: str, limit_type: str):
 def increment_error(error_type: str, endpoint: str, status_code: str):
     """Increment error counter."""
     ERROR_COUNT.labels(error_type=error_type, endpoint=endpoint, status_code=status_code).inc()
+
+
+def increment_auth_failure(reason: str, operation: str):
+    """Increment authentication failure counter."""
+    AUTH_LOGIN_FAILURES.labels(reason=reason).inc()
+    AUTH_LOGIN_ATTEMPTS.labels(status="failure").inc()
+
+
+def increment_auth_success(operation: str):
+    """Increment authentication success counter."""
+    AUTH_LOGIN_ATTEMPTS.labels(status="success").inc()
 
 
 def set_active_users(count: int):

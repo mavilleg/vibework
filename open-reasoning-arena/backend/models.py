@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, Boolean, DateTime, Float, Index
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, Boolean, DateTime, Float, Index, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -9,12 +9,15 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    full_name = Column(String(100), nullable=True)
     hashed_password = Column(String(255), nullable=True)  # Null for models
     is_human = Column(Boolean, default=True, nullable=False)  # True = human, False = model
     reputation = Column(Integer, default=0, nullable=False)  # Reputation score for contributions
     is_active = Column(Boolean, default=True, nullable=False)
-    is_admin = Column(Boolean, default=False, nullable=False)
+    is_superuser = Column(Boolean, default=False, nullable=False)
+    roles = Column(JSON, default=["user"], nullable=False)  # List of roles: user, moderator, admin
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     last_login = Column(DateTime, nullable=True)
     
     # Indexes for performance
@@ -22,17 +25,30 @@ class User(Base):
         Index('ix_users_username', 'username'),
         Index('ix_users_email', 'email'),
         Index('ix_users_reputation', 'reputation'),
+        Index('ix_users_active', 'is_active'),
+        Index('ix_users_created', 'created_at'),
     )
     
     # Relationships
     tasks = relationship("Task", back_populates="author", cascade="all, delete-orphan")
     solutions = relationship("Solution", back_populates="author", cascade="all, delete-orphan")
     scores = relationship("Score", back_populates="reviewer", cascade="all, delete-orphan")
-    challenges = relationship("Challenge", back_populates="challenger", cascade="all, delete-orphan")
+    challenges = relationship("Challenge", back_populates="challenger", cascade="all, delete-orphan", foreign_keys="Challenge.challenger_id")
+    resolved_challenges = relationship("Challenge", back_populates="resolver", cascade="all, delete-orphan", foreign_keys="Challenge.resolved_by")
     fingerprints = relationship("ModelFingerprint", back_populates="owner", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<User(id={self.id}, username='{self.username}', reputation={self.reputation})>"
+        return f"<User(id={self.id}, username='{self.username}', reputation={self.reputation}, roles={self.roles})>"
+    
+    @property
+    def is_admin(self) -> bool:
+        """Check if user is an admin."""
+        return self.is_superuser or (self.roles and "admin" in self.roles)
+    
+    @property
+    def is_moderator(self) -> bool:
+        """Check if user is a moderator."""
+        return self.is_admin or (self.roles and "moderator" in self.roles)
 
 
 class Task(Base):

@@ -48,11 +48,16 @@ class SecurityConfig:
     rate_limit_solutions: str = os.getenv("RATE_LIMIT_SOLUTIONS", "20/minute")
     rate_limit_challenges: str = os.getenv("RATE_LIMIT_CHALLENGES", "15/minute")
     
-    # Authentication
+    # JWT Authentication
+    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "")
+    jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
+    access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    refresh_token_expire_days: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+    enable_auth: bool = os.getenv("ENABLE_AUTH", "false").lower() == "true"
+    
+    # Legacy secret key for backward compatibility
     secret_key: str = os.getenv("SECRET_KEY", "")
     algorithm: str = os.getenv("ALGORITHM", "HS256")
-    access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-    enable_auth: bool = os.getenv("ENABLE_AUTH", "false").lower() == "true"
     
     # CORS
     cors_origins: List[str] = field(default_factory=lambda: 
@@ -92,12 +97,24 @@ class CacheConfig:
     max_size: int = int(os.getenv("CACHE_MAX_SIZE", "1000"))
     backend: str = os.getenv("CACHE_BACKEND", "memory")  # memory, redis
     
+    # Redis configuration
+    redis_host: str = os.getenv("REDIS_HOST", "localhost")
+    redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
+    redis_db: int = int(os.getenv("REDIS_DB", "0"))
+    redis_password: Optional[str] = os.getenv("REDIS_PASSWORD", None)
+    redis_pool_size: int = int(os.getenv("REDIS_POOL_SIZE", "10"))
+    
     def validate(self) -> None:
         """Validate cache configuration."""
         if self.ttl <= 0:
             raise ValueError("Cache TTL must be positive")
         if self.max_size <= 0:
             raise ValueError("Cache max size must be positive")
+        if self.backend not in ["memory", "redis"]:
+            raise ValueError(f"Invalid cache backend: {self.backend}")
+        if self.backend == "redis":
+            if self.redis_pool_size <= 0:
+                raise ValueError("Redis pool size must be positive")
 
 
 @dataclass
