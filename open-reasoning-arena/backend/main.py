@@ -59,13 +59,26 @@ from .cache import (
     clear_all_caches,
 )
 from .seed_tasks import SEED_TASKS
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+from .monitoring import (
+    MonitoringMiddleware,
+    init_monitoring,
+    increment_task_created,
+    increment_solution_created,
+    increment_challenge_created,
+    increment_challenge_accepted,
+    increment_challenge_rejected,
+    increment_score_created,
+    increment_user_created,
+    increment_error,
+    increment_rate_limit,
+    set_leaderboard_metrics,
 )
-logger = logging.getLogger(__name__)
+from .logging_config import configure_logging, get_logger, LoggingMiddleware
+from .api_docs import get_openapi_config, tags_metadata
+
+# Configure structured logging
+configure_logging()
+logger = get_logger(__name__)
 
 # Get the directory of this file
 current_dir = __file__.rsplit("/", 1)[0] if "/" in __file__ else "."
@@ -79,17 +92,29 @@ limiter = Limiter(key_func=get_remote_address)
 # Get configuration
 config = get_config()
 
-# Create FastAPI app
+# Create FastAPI app with enhanced OpenAPI config
+openapi_config = get_openapi_config()
 app = FastAPI(
-    title=config.name,
-    description="A dynamic, adversarial benchmark for LLM reasoning.",
-    version=config.version,
+    title=openapi_config["title"],
+    description=openapi_config["description"],
+    version=openapi_config["version"],
     debug=config.debug,
+    openapi_tags=tags_metadata,
+    contact=openapi_config.get("contact"),
+    license_info=openapi_config.get("license"),
+    servers=openapi_config.get("servers", []),
 )
 
 # Store config and limiter in app state
 app.state.limiter = limiter
 app.state.config = config
+
+# Initialize monitoring
+init_monitoring()
+
+# Add middlewares
+app.add_middleware(MonitoringMiddleware)
+app.add_middleware(LoggingMiddleware)
 
 
 # ==================== EXCEPTION HANDLERS ====================
@@ -98,6 +123,9 @@ app.state.config = config
 async def ora_error_handler(request: Request, exc: ORAError) -> JSONResponse:
     """Handle ORAError exceptions with consistent error format."""
     logger.warning(f"ORAError: {exc.code} - {exc.message}")
+    # Track error in metrics
+    endpoint = request.url.path.split("/")[1] if len(request.url.path.split("/")) > 1 else "root"
+    increment_error(error_type=exc.code, endpoint=endpoint, status_code=str(exc.status_code))
     return JSONResponse(
         status_code=exc.status_code,
         content=jsonable_encoder(exc.to_dict()),
@@ -109,6 +137,8 @@ async def rate_limit_exceeded_handler(request: Request, exc: SlowapiRateLimitExc
     """Handle rate limit exceeded errors."""
     retry_after = int(exc.detail.get("retry-after", 60))
     logger.warning(f"Rate limit exceeded: {request.url} - Retry after: {retry_after}s")
+    endpoint = request.url.path.split("/")[1] if len(request.url.path.split("/")) > 1 else "root"
+    increment_rate_limit(endpoint=endpoint, limit_type="global")
     ora_exc = RateLimitExceededError(retry_after=retry_after)
     return JSONResponse(
         status_code=429,
@@ -121,6 +151,8 @@ async def rate_limit_exceeded_handler(request: Request, exc: SlowapiRateLimitExc
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Handle HTTPException with consistent error format."""
     logger.warning(f"HTTPException: {exc.status_code} - {exc.detail}")
+    endpoint = request.url.path.split("/")[1] if len(request.url.path.split("/")) > 1 else "root"
+    increment_error(error_type="HTTP_ERROR", endpoint=endpoint, status_code=str(exc.status_code))
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -135,6 +167,8 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle unexpected exceptions."""
     logger.error(f"Unexpected error: {type(exc).__name__}: {exc}", exc_info=True)
+    endpoint = request.url.path.split("/")[1] if len(request.url.path.split("/")) > 1 else "root"
+    increment_error(error_type=type(exc).__name__, endpoint=endpoint, status_code="500")
     return JSONResponse(
         status_code=500,
         content={
@@ -426,6 +460,9 @@ async def create_user(
     db.commit()
     db.refresh(db_user)
     
+    # Track metrics
+    increment_user_created(is_human=user.is_human)
+    
     return db_user
 
 
@@ -475,6 +512,9 @@ async def create_task(
     
     # Award reputation for task submission
     utils.award_reputation_for_task_submission(author_id)
+    
+    # Track metrics
+    increment_task_created(category=task.category, difficulty=task.difficulty)
     
     # Invalidate tasks cache
     get_tasks_cache().clear()
@@ -626,6 +666,9 @@ async def create_solution(
     # Award reputation for solution submission
     utils.award_reputation_for_solution_submission(author_id)
     
+    # Track metrics
+    increment_solution_created(model_name=solution.model_name)
+    
     # Invalidate caches
     get_solutions_cache().clear()
     get_leaderboard_cache().clear()
@@ -714,6 +757,9 @@ async def create_score(
     # Award reputation for scoring
     utils.award_reputation_for_scoring(reviewer_id)
     
+    # Track metrics
+    increment_score_created()
+    
     # Invalidate caches
     get_leaderboard_cache().clear()
     
@@ -772,6 +818,9 @@ async def create_challenge(
     # Award reputation for challenge
     utils.award_reputation_for_challenge(challenger_id)
     
+    # Track metrics
+    increment_challenge_created()
+    
     return db_challenge
 
 
@@ -813,6 +862,9 @@ async def accept_challenge(
     # Award reputation for accepted challenge
     utils.award_reputation_for_challenge_accepted(db_challenge.challenger_id)
     
+    # Track metrics
+    increment_challenge_accepted()
+    
     return {"message": "Challenge accepted"}
 
 
@@ -831,6 +883,9 @@ async def reject_challenge(
     db_challenge.status = "rejected"
     db_challenge.resolved_at = datetime.utcnow()
     db.commit()
+    
+    # Track metrics
+    increment_challenge_rejected()
     
     return {"message": "Challenge rejected"}
 
@@ -892,6 +947,13 @@ async def get_leaderboard(
     leaderboard.sort(key=lambda x: x["avg_score"], reverse=True)
     
     result = schemas.LeaderboardResponse(models=leaderboard)
+    
+    # Set leaderboard metrics
+    if leaderboard:
+        set_leaderboard_metrics(
+            models_count=len(leaderboard),
+            top_score=leaderboard[0]["avg_score"] if leaderboard else 0
+        )
     
     # Cache the result
     cache_leaderboard(result)
