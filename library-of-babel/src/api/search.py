@@ -28,7 +28,11 @@ def get_search_service(request: Request):
 @limiter.limit("20/minute")
 async def search_books(
     request: Request,
-    q: str = Query(..., min_length=1, description="Text to search for"),
+    # Note: we intentionally omit min_length=1 here.  FastAPI's Query
+    # validator would return HTTP 422 for an empty string, but the API
+    # contract specifies HTTP 400 for validation errors.  The empty-query
+    # check below returns 400 via the custom InvalidSearchQueryError handler.
+    q: str = Query(..., description="Text to search for"),
     limit: int = Query(10, ge=1, le=50, description="Maximum number of results"),
     strategy: str = Query("sequential", description="Search strategy: sequential, random, or smart")
 ):
@@ -125,33 +129,35 @@ async def search_regex(
             f"Pattern too long. Maximum length is {config.security.max_regex_length} characters."
         )
     
-    # Check for potentially dangerous regex patterns
-    dangerous_patterns = [
-        r'\.\*',      # .* - can cause catastrophic backtracking
-        r'\.\+',      # .+ - can cause catastrophic backtracking
-        r'\*\.',      # *. - can cause catastrophic backtracking
-        r'\+\.',      # +. - can cause catastrophic backtracking
-        r'\{',        # { - quantifier
-        r'\}',        # } - quantifier
-        r'\(\?',      # (? - lookahead/lookbehind
-        r'\[\^',      # [^ - negated character class
+    # Check for potentially dangerous regex patterns (simple substring check).
+    # Python's `re` module does not support a timeout parameter, so we
+    # proactively filter known ReDoS-prone constructs.  This is not
+    # exhaustive — complex nested quantifiers may still be pathological —
+    # but covers the most common attack patterns.  Further hardening (e.g.
+    # running compilation in a subprocess with a wall-clock timeout) is
+    # possible but outside the scope of this service.
+    dangerous_constructs = [
+        ".*",   # .* - can cause catastrophic backtracking
+        ".+",   # .+ - can cause catastrophic backtracking
+        "*.",   # *. - can cause catastrophic backtracking
+        "+.",   # +. - can cause catastrophic backtracking
+        "(?",   # (? - lookahead/lookbehind
+        "[^",   # [^ - negated character class
     ]
-    
-    for dangerous in dangerous_patterns:
+
+    for dangerous in dangerous_constructs:
         if dangerous in pattern:
             raise RegexError(
                 pattern,
                 f"Pattern contains potentially dangerous construct: {dangerous}"
             )
-    
+
     try:
-        # Compile with timeout to prevent ReDoS
-        compiled = re.compile(pattern, re.IGNORECASE, timeout=1.0)
+        # Compile the regex pattern (without timeout - dangerous patterns filtered above)
+        compiled = re.compile(pattern, re.IGNORECASE)
     except re.error as e:
         raise RegexError(pattern, str(e))
-    except TimeoutError:
-        raise RegexError(pattern, "Regex compilation timeout")
-    
+
     try:
         search_service = get_search_service(request)
         results = search_service.search_regex(pattern, limit=limit)
@@ -220,3 +226,44 @@ async def find_similar(
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid book ID: {e}")
+
+
+@router.get("/similar", response_model=list, summary="Find similar books by book number")
+@limiter.limit("15/minute")
+async def find_similar_by_number(
+    request: Request,
+    book_number: int = Query(..., ge=0, description="Book number to find similar books for"),
+    limit: int = Query(10, ge=1, le=50, description="Maximum number of results")
+):
+    """
+    Find books similar to the book at the given number.
+
+    This is a URL-friendly alternative to /similar/{book_id} that accepts
+    the book's ordinal position rather than its (potentially very long) ID string.
+
+    Args:
+        book_number: The book number (non-negative integer)
+        limit: Maximum number of results to return
+
+    Returns:
+        List of similar books
+    """
+    try:
+        from ..models.encoding import BookEncoder
+        encoder = BookEncoder()
+        book_id = encoder.number_to_book_id(book_number)
+
+        search_service = get_search_service(request)
+        results = search_service.find_similar(book_id, limit=limit)
+
+        return [
+            {
+                "book_id": result.book.book_id,
+                "similarity_score": result.score,
+                "book": result.book.to_dict(),
+            }
+            for result in results
+        ]
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to find similar books: {e}")

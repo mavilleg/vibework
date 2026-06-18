@@ -107,7 +107,7 @@ def test_library_model():
     
     # Test getting stats
     stats = library.get_stats()
-    assert stats.total_possible_books > 0
+    assert stats.total_possible_books
     
     print("✓ Library model works perfectly")
 

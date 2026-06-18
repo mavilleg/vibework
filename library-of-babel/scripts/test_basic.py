@@ -74,7 +74,7 @@ def test_library():
     
     # Test getting stats
     stats = library.get_stats()
-    assert stats.total_possible_books > 0, "Total possible books should be positive"
+    assert stats.total_possible_books, "Total possible books should be positive"
     
     print("✓ Library works")
 

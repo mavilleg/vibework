@@ -19,18 +19,20 @@ from ..config import get_config
 @dataclass
 class LibraryStats:
     """Statistics about the library."""
-    
-    total_possible_books: int
+
+    # Stored as a human-readable scientific notation string to avoid the overhead
+    # (and Python 3.12 string-conversion limit) of materialising the huge integer.
+    total_possible_books: str
     cached_books: int = 0
     storage_used_bytes: int = 0
     requests_today: int = 0
     average_generation_time_ms: float = 0.0
     last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     def to_dict(self) -> dict:
         """Convert stats to dictionary."""
         return {
-            "total_possible_books": str(self.total_possible_books),
+            "total_possible_books": self.total_possible_books,
             "cached_books": self.cached_books,
             "storage_used_bytes": self.storage_used_bytes,
             "storage_used_gb": round(self.storage_used_bytes / (1024**3), 2),
@@ -106,7 +108,7 @@ class Library:
         
         # Initialize statistics
         self.stats = LibraryStats(
-            total_possible_books=self.base25.get_total_books()
+            total_possible_books=self.config.book.total_possible_books_notation
         )
         
         # Cache for frequently accessed books
@@ -370,7 +372,7 @@ class Library:
             f"total_books={self.stats.total_possible_books}, "
             f"cached={self.stats.cached_books})"
         )
-    
+
     def __repr__(self) -> str:
         """Detailed representation of the library."""
         return (

@@ -126,7 +126,8 @@ class BookSearch:
         It's deterministic but may not find the most interesting results.
         """
         results = []
-        max_books = 10000  # Limit for performance
+        total_books = self.base25.get_total_books()
+        max_books = min(10000, total_books)  # cap to avoid out-of-range book numbers
         
         for i in range(max_books):
             if len(results) >= limit:
@@ -221,7 +222,8 @@ class BookSearch:
             return []
         
         results = []
-        max_books = 1000  # Limit for performance
+        total_books = self.base25.get_total_books()
+        max_books = min(1000, total_books)  # Limit for performance, cap to valid range
         
         for i in range(max_books):
             if len(results) >= limit:
@@ -270,7 +272,8 @@ class BookSearch:
         
         # Search for books that start with the same pattern
         results = []
-        max_books = 1000
+        total_books = self.base25.get_total_books()
+        max_books = min(1000, total_books)
         
         for i in range(max_books):
             if len(results) >= limit:

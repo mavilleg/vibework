@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "appName": {
+      "value": "library-of-babel"
+    },
+    "location": {
+      "value": "[resourceGroup().location]"
+    },
+    "appServicePlanSku": {
+      "value": "B1"
+    },
+    "dockerImage": {
+      "value": "nginx:latest"
+    },
+    "dockerRegistryServer": {
+      "value": "https://index.docker.io"
+    },
+    "dockerRegistryUsername": {
+      "value": ""
+    },
+    "dockerRegistryPassword": {
+      "value": ""
+    }
+  }
+}

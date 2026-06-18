@@ -489,6 +489,22 @@ class MonitoredSearch:
             ).inc()
             raise
 
+    def find_similar(self, book_id: str, limit: int = 10):
+        """Find similar books with monitoring."""
+        start_time = time.time()
+        try:
+            results = self.search_service.find_similar(book_id, limit)
+            SEARCH_QUERIES.labels('similar').inc()
+            SEARCH_LATENCY.labels('similar').observe(time.time() - start_time)
+            SEARCH_RESULTS.observe(len(results))
+            return results
+        except Exception as e:
+            ERRORS_TOTAL.labels(
+                error_type=type(e).__name__,
+                endpoint='find_similar'
+            ).inc()
+            raise
+
 
 # ============================================================================
 # Utility Functions
