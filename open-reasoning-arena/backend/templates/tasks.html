@@ -1,34 +1,124 @@
-<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-    {% for task in tasks %}
-    <div class="task-card bg-white p-4 rounded-lg shadow-sm border">
-        <div class="flex justify-between items-start mb-2">
-            <h3 class="font-bold text-lg">{{ task.title }}</h3>
-            <span class="px-2 py-1 rounded text-xs font-medium category-{{ task.category }}">
-                {{ task.category }}
-            </span>
+{% extends "base.html" %}
+
+{% block title %}Tasks - Open Reasoning Arena{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Reasoning Tasks</h1>
+            <p class="text-gray-600 mt-1">Browse and solve reasoning challenges</p>
         </div>
-        <p class="text-gray-600 mb-3 line-clamp-2">{{ task.description }}</p>
-        <div class="flex gap-2 mb-3">
-            <span class="px-2 py-1 rounded text-xs font-medium difficulty-{{ task.difficulty }}">
-                Difficulty: {{ task.difficulty }}/5
-            </span>
-            {% if task.is_objective %}
-            <span class="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                Objective
-            </span>
-            {% endif %}
+        <div class="flex items-center space-x-4">
+            <!-- Filter by category -->
+            <div class="relative">
+                <select 
+                    hx-get="/tasks/" 
+                    hx-trigger="change"
+                    hx-include="[name='category'],[name='difficulty']"
+                    name="category"
+                    class="block appearance-none bg-white border border-gray-300 hover:border-gray-500 px-4 py-2 pr-8 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                    <option value="">All Categories</option>
+                    <option value="math">Math</option>
+                    <option value="logic">Logic</option>
+                    <option value="code">Code</option>
+                    <option value="language">Language</option>
+                    <option value="reasoning">Reasoning</option>
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                    <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                    </svg>
+                </div>
+            </div>
+            
+            <!-- Filter by difficulty -->
+            <div class="relative">
+                <select 
+                    hx-get="/tasks/" 
+                    hx-trigger="change"
+                    hx-include="[name='category'],[name='difficulty']"
+                    name="difficulty"
+                    class="block appearance-none bg-white border border-gray-300 hover:border-gray-500 px-4 py-2 pr-8 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                    <option value="">All Difficulties</option>
+                    <option value="1">1 - Easy</option>
+                    <option value="2">2</option>
+                    <option value="3">3 - Medium</option>
+                    <option value="4">4</option>
+                    <option value="5">5 - Hard</option>
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                    <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                    </svg>
+                </div>
+            </div>
+            
+            <!-- Submit Task Button -->
+            <a href="/submit-task" class="btn-primary px-4 py-2 rounded-lg font-medium">
+                + Submit Task
+            </a>
         </div>
-        <a 
-            href="/task/{{ task.id }}" 
-            class="text-indigo-600 hover:text-indigo-800 font-medium text-sm"
-        >
-            View Task →
-        </a>
     </div>
-    {% endfor %}
-    {% if not tasks %}
-    <div class="col-span-full text-center py-8">
-        <p class="text-gray-500">No tasks found. <a href="/submit-task" class="text-indigo-600 hover:underline">Submit one!</a></p>
+    
+    <!-- Tasks Grid -->
+    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {% for task in tasks %}
+        <div class="task-card bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="font-bold text-lg text-gray-900 line-clamp-1">{{ task.title }}</h3>
+                <span class="px-3 py-1 rounded-full text-xs font-medium category-{{ task.category }}">
+                    {{ task.category | capitalize }}
+                </span>
+            </div>
+            <p class="text-gray-600 mb-4 line-clamp-3">{{ task.description }}</p>
+            <div class="flex flex-wrap gap-2 mb-4">
+                <span class="px-3 py-1 rounded-full text-xs font-medium difficulty-{{ task.difficulty }}">
+                    Level {{ task.difficulty }}
+                </span>
+                {% if task.is_objective %}
+                <span class="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    ✓ Objective
+                </span>
+                {% endif %}
+                <span class="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                    {{ task.solution_count or 0 }} Solutions
+                </span>
+            </div>
+            <div class="flex items-center justify-between">
+                <a 
+                    href="/task/{{ task.id }}" 
+                    class="text-indigo-600 hover:text-indigo-800 font-medium text-sm flex items-center"
+                >
+                    View Details
+                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                </a>
+                {% if task.author %}
+                <span class="text-xs text-gray-500">By User #{{ task.author_id }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        
+        {% if not tasks %}
+        <div class="col-span-full text-center py-12">
+            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+            </div>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No tasks found</h3>
+            <p class="text-gray-500 mb-4">Try adjusting your filters or submit a new task</p>
+            <a href="/submit-task" class="btn-primary px-6 py-2 rounded-lg font-medium inline-block">
+                Submit Your First Task
+            </a>
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
+{% endblock %}

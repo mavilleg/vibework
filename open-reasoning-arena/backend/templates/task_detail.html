@@ -1,42 +1,129 @@
-<div>
-    <div class="flex justify-between items-start mb-4">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">{{ task.title }}</h1>
-            <p class="text-gray-500 mt-1">
-                Submitted by {{ task.author.username if task.author else 'Unknown' }} • 
-                {{ task.created_at.strftime('%B %d, %Y') }}
-            </p>
+{% extends "base.html" %}
+
+{% block title %}{{ task.title }} - Open Reasoning Arena{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Back Navigation -->
+    <div>
+        <a href="/tasks/" class="flex items-center text-gray-600 hover:text-gray-900 font-medium">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            Back to Tasks
+        </a>
+    </div>
+    
+    <!-- Task Header -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+        <div class="flex justify-between items-start mb-6">
+            <div class="flex-1">
+                <div class="flex items-center space-x-4 mb-4">
+                    <span class="px-4 py-2 rounded-full text-sm font-medium category-{{ task.category }}">
+                        {{ task.category | capitalize }}
+                    </span>
+                    <span class="px-4 py-2 rounded-full text-sm font-medium difficulty-{{ task.difficulty }}">
+                        Level {{ task.difficulty }}
+                    </span>
+                    {% if task.is_objective %}
+                    <span class="px-4 py-2 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                        ✓ Objective
+                    </span>
+                    {% endif %}
+                </div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-4">{{ task.title }}</h1>
+                <p class="text-gray-600 text-lg leading-relaxed">{{ task.description }}</p>
+            </div>
         </div>
-        <div class="flex gap-2">
-            <span class="px-3 py-1 rounded-full text-sm font-medium category-{{ task.category }}">
-                {{ task.category }}
-            </span>
-            <span class="px-3 py-1 rounded-full text-sm font-medium difficulty-{{ task.difficulty }}">
-                Difficulty: {{ task.difficulty }}/5
-            </span>
+        
+        <div class="flex items-center justify-between border-t pt-6">
+            <div class="flex items-center space-x-6 text-sm text-gray-500">
+                <span>Created: {{ task.created_at.strftime('%B %d, %Y') if task.created_at else 'Unknown' }}</span>
+                <span>Task ID: #{{ task.id }}</span>
+                <span>{{ task.solution_count or 0 }} Solutions</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                {% if task.author %}
+                <span class="text-sm text-gray-500">Submitted by User #{{ task.author_id }}</span>
+                {% endif %}
+            </div>
         </div>
     </div>
     
-    <div class="prose max-w-none mb-6">
-        <p class="text-gray-700">{{ task.description }}</p>
-    </div>
-    
-    {% if task.is_objective %}
-    <div class="bg-blue-50 p-4 rounded-lg mb-6">
-        <p class="text-sm text-blue-800">
-            <strong>Objective Task:</strong> This task has a correct answer and can be auto-scored.
-        </p>
-    </div>
-    {% endif %}
-    
-    <div class="grid md:grid-cols-2 gap-6">
-        <!-- Submit Solution -->
-        <div class="bg-white p-4 rounded-lg shadow-sm border">
-            <h2 class="text-lg font-semibold mb-4">Submit a Solution</h2>
-            <form 
-                hx-post="/solutions" 
-                hx-target="#solution-response" 
+    <!-- Solutions Section -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-900">Solutions ({{ task.solution_count or 0 }})</h2>
+            <button 
+                hx-get="/tasks/{{ task.id }}/solutions" 
+                hx-trigger="click"
+                hx-target="#solutions-list"
                 hx-swap="innerHTML"
+                class="btn-secondary px-4 py-2 rounded-lg font-medium text-sm"
+            >
+                <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5"></path>
+                </svg>
+                Refresh
+            </button>
+        </div>
+        
+        <div id="solutions-list">
+            {% if task.solutions %}
+            <div class="space-y-4">
+                {% for solution in task.solutions %}
+                <div class="border border-gray-200 rounded-lg p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="font-semibold text-gray-900">Model: {{ solution.model_name }}</h3>
+                            <p class="text-sm text-gray-500">Submitted by User #{{ solution.author_id }}</p>
+                        </div>
+                        <span class="px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                            {{ solution.created_at.strftime('%B %d, %Y') if solution.created_at else 'Unknown' }}
+                        </span>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                        <pre class="text-sm text-gray-800 whitespace-pre-wrap">{{ solution.answer }}</pre>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            {% if solution.is_verified %}
+                            <span class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                ✓ Verified
+                            </span>
+                            {% endif %}
+                            {% if solution.scores %}
+                            <span class="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                Avg Score: {{ "%.1f"|format(solution.scores|map(attribute='score')|list|sum / solution.scores|length) if solution.scores else 'N/A' }}
+                            </span>
+                            {% endif %}
+                        </div>
+                        <a 
+                            href="/solutions/{{ solution.id }}" 
+                            class="text-indigo-600 hover:text-indigo-800 font-medium text-sm"
+                        >
+                            View Details
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-8">
+                <p class="text-gray-500">No solutions yet. Be the first to submit one!</p>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Submit Solution Form -->
+        <div class="border-t border-gray-200 mt-8 pt-8">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">Submit a Solution</h3>
+            <form 
+                hx-post="/solutions/" 
+                hx-trigger="submit"
+                hx-target="#solutions-list"
+                hx-swap="beforeend"
+                hx-on::after-request="this.reset()"
                 class="space-y-4"
             >
                 <input type="hidden" name="task_id" value="{{ task.id }}">
@@ -48,76 +135,95 @@
                         id="model_name" 
                         name="model_name" 
                         required
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md"
                         placeholder="e.g., gpt-4, llama-3-70b"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     >
                 </div>
                 
                 <div>
-                    <label for="answer" class="block text-sm font-medium text-gray-700 mb-1">Answer</label>
+                    <label for="answer" class="block text-sm font-medium text-gray-700 mb-1">Your Answer</label>
                     <textarea 
                         id="answer" 
                         name="answer" 
-                        rows="4" 
+                        rows="6" 
                         required
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        placeholder="Your solution..."
+                        placeholder="Enter your solution here..."
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     ></textarea>
                 </div>
                 
-                <button 
-                    type="submit" 
-                    class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                >
-                    Submit Solution
-                </button>
-            </form>
-            
-            <div id="solution-response" class="mt-4"></div>
-        </div>
-        
-        <!-- Solutions List -->
-        <div class="bg-white p-4 rounded-lg shadow-sm border">
-            <h2 class="text-lg font-semibold mb-4">Recent Solutions</h2>
-            <div id="solutions-list">
-                {% for solution in task.solutions[:5] %}
-                <div class="border-b last:border-b-0 pb-3 mb-3">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="font-medium">{{ solution.model_name }}</p>
-                            <p class="text-sm text-gray-500">
-                                Submitted by {{ solution.author.username if solution.author else 'Unknown' }} • 
-                                {{ solution.created_at.strftime('%B %d, %Y') }}
-                            </p>
-                        </div>
-                        <div class="flex gap-2">
-                            {% for score in solution.scores %}
-                            <span class="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
-                                Score: {{ score.score }}/100
-                            </span>
-                            {% endfor %}
-                            <button 
-                                hx-post="/challenges" 
-                                hx-vals='{"solution_id": {{ solution.id }}}' 
-                                hx-target="#challenge-modal-{{ solution.id }}" 
-                                hx-swap="innerHTML"
-                                class="px-3 py-1 text-xs bg-red-100 text-red-800 rounded hover:bg-red-200 transition"
-                            >
-                                Challenge
-                            </button>
-                        </div>
-                    </div>
-                    <p class="text-sm text-gray-700 mt-2">{{ solution.answer[:100] }}{% if solution.answer|length > 100 %}...{% endif %}</p>
+                <div class="flex justify-end">
+                    <button 
+                        type="submit" 
+                        class="btn-primary px-6 py-2 rounded-lg font-medium"
+                    >
+                        Submit Solution
+                    </button>
                 </div>
-                {% endfor %}
-                {% if not task.solutions %}
-                <p class="text-gray-500 text-sm">No solutions yet. Be the first to submit one!</p>
-                {% endif %}
-            </div>
+            </form>
         </div>
     </div>
     
-    <div class="mt-6">
-        <a href="/tasks" class="text-gray-600 hover:text-indigo-600">← Back to Tasks</a>
+    <!-- Challenge Section (if task has solutions) -->
+    {% if task.solutions %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">Challenge a Solution</h2>
+        <p class="text-gray-600 mb-6">Found a counterexample that breaks a solution? Submit a challenge to help improve the models.</p>
+        
+        <div class="space-y-4">
+            {% for solution in task.solutions %}
+            <div class="border border-gray-200 rounded-lg p-4">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="font-medium text-gray-900">Model: {{ solution.model_name }}</span>
+                    <button 
+                        onclick="document.getElementById('challenge-solution-{{ solution.id }}').classList.toggle('hidden')"
+                        class="text-indigo-600 hover:text-indigo-800 font-medium text-sm"
+                    >
+                        Challenge
+                    </button>
+                </div>
+                <div id="challenge-solution-{{ solution.id }}" class="hidden mt-4">
+                    <form 
+                        hx-post="/challenges/" 
+                        hx-trigger="submit"
+                        hx-target="#challenge-result-{{ solution.id }}"
+                        hx-swap="innerHTML"
+                        class="space-y-4"
+                    >
+                        <input type="hidden" name="solution_id" value="{{ solution.id }}">
+                        <div>
+                            <label for="counterexample-{{ solution.id }}" class="block text-sm font-medium text-gray-700 mb-1">Counterexample</label>
+                            <textarea 
+                                id="counterexample-{{ solution.id }}" 
+                                name="counterexample" 
+                                rows="3" 
+                                required
+                                placeholder="Describe the counterexample that breaks this solution..."
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            ></textarea>
+                        </div>
+                        <div class="flex justify-end space-x-2">
+                            <button 
+                                type="button" 
+                                onclick="document.getElementById('challenge-solution-{{ solution.id }}').classList.add('hidden')"
+                                class="btn-secondary px-4 py-2 rounded-lg font-medium text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                type="submit" 
+                                class="btn-primary px-4 py-2 rounded-lg font-medium text-sm"
+                            >
+                                Submit Challenge
+                            </button>
+                        </div>
+                    </form>
+                    <div id="challenge-result-{{ solution.id }}"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
+    {% endif %}
 </div>
+{% endblock %}
