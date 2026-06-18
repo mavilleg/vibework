@@ -1,5 +1,5 @@
 # Python
-__pycache__
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -41,6 +41,11 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 
+# Git
+.git/
+.gitignore
+.gitmodules
+
 # Documentation
 docs/
 *.md
@@ -54,19 +59,22 @@ docs/
 *.log
 logs/
 
-# Docker
-Dockerfile
-docker-compose*
-.docker/
-
-# Git
-git/
-.git/
-.gitignore
-
 # OS
 .DS_Store
 Thumbs.db
 
-# Project specific
-library-of-babel/
+# Docker
+Dockerfile*
+docker-compose*
+.docker/
+
+# Test files
+*_test.py
+tests/
+
+# Static files (if not needed in container)
+static/
+
+# Node (if frontend)
+node_modules/
+npm-debug.log

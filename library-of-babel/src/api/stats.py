@@ -5,26 +5,19 @@ This module provides the API endpoints for retrieving library statistics
 and monitoring information.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from typing import Optional
 
 from ..config import get_config
-from ..models.library import Library, LibraryStats
-from ..services.generation import BookGenerator
-from ..services.search import BookSearch
-from ..services.cache import create_cache
+from ..monitoring import get_monitoring_status
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
-# Initialize services
-library = Library()
-generator = BookGenerator()
-search_service = BookSearch()
-cache = create_cache()
-
 
 @router.get("", response_model=dict, summary="Get library statistics")
-async def get_library_stats():
+async def get_library_stats(
+    request: Request
+):
     """
     Get overall library statistics.
     
@@ -35,13 +28,19 @@ async def get_library_stats():
         Library statistics
     """
     try:
+        library = request.app.state.library
+        generator = request.app.state.generator
+        search_service = request.app.state.search_service
+        cache = request.app.state.cache
+        config = get_config()
+        
         stats = library.get_stats()
         
         return {
             "library": {
                 "name": "Library of Babel",
-                "version": get_config().version,
-                "environment": get_config().environment,
+                "version": config.version,
+                "environment": config.environment,
             },
             "books": {
                 "total_possible": str(stats.total_possible_books),
@@ -53,23 +52,23 @@ async def get_library_stats():
                 "today": stats.requests_today,
             },
             "generation": {
-                "total_generated": generator.stats.total_generated,
-                "average_time_ms": round(generator.stats.average_time_ms, 2),
-                "last_generation_time_ms": round(generator.stats.last_generation_time_ms, 2),
+                "total_generated": generator.generator.stats.total_generated,
+                "average_time_ms": round(generator.generator.stats.average_time_ms, 2),
+                "last_generation_time_ms": round(generator.generator.stats.last_generation_time_ms, 2),
             },
             "search": {
-                "total_searches": search_service.stats.total_searches,
-                "total_books_searched": search_service.stats.total_books_searched,
-                "total_matches": search_service.stats.total_matches,
-                "average_search_time_ms": round(search_service.stats.average_search_time_ms, 2),
+                "total_searches": search_service.search_service.stats.total_searches,
+                "total_books_searched": search_service.search_service.stats.total_books_searched,
+                "total_matches": search_service.search_service.stats.total_matches,
+                "average_search_time_ms": round(search_service.search_service.stats.average_search_time_ms, 2),
             },
-            "cache": cache.get_stats().to_dict(),
+            "cache": cache.cache.get_stats().to_dict(),
             "config": {
-                "pages": get_config().book.pages,
-                "lines_per_page": get_config().book.lines_per_page,
-                "chars_per_line": get_config().book.chars_per_line,
-                "alphabet_size": get_config().book.alphabet_size,
-                "total_chars_per_book": get_config().book.total_chars,
+                "pages": config.book.pages,
+                "lines_per_page": config.book.lines_per_page,
+                "chars_per_line": config.book.chars_per_line,
+                "alphabet_size": config.book.alphabet_size,
+                "total_chars_per_book": config.book.total_chars,
             }
         }
         
@@ -91,6 +90,7 @@ async def get_config_stats():
     try:
         config = get_config()
         
+        # Don't expose secret key in response
         return {
             "app": {
                 "name": config.name,
@@ -107,17 +107,30 @@ async def get_config_stats():
                 "alphabet_size": config.book.alphabet_size,
                 "total_chars": config.book.total_chars,
                 "total_possible_books": str(config.book.total_possible_books),
+                "lazy_loading": config.book.lazy_loading,
             },
             "cache": {
                 "enabled": config.cache.enabled,
                 "ttl": config.cache.ttl,
                 "max_size": config.cache.max_size,
                 "backend": config.cache.backend,
+                "compression": config.cache.compression,
+            },
+            "security": {
+                "rate_limit": config.security.rate_limit,
+                "rate_limit_search": config.security.rate_limit_search,
+                "rate_limit_regex": config.security.rate_limit_regex,
+                "enable_auth": config.security.enable_auth,
+                "max_query_length": config.security.max_query_length,
+                "max_regex_length": config.security.max_regex_length,
+                "max_range_size": config.security.max_range_size,
+                "cors_origins": config.security.cors_origins,
             },
             "azure": {
                 "is_enabled": config.azure.is_azure_enabled,
                 "blob_container": config.azure.blob_container,
-            }
+            },
+            "monitoring": get_monitoring_status()
         }
         
     except Exception as e:
@@ -125,7 +138,9 @@ async def get_config_stats():
 
 
 @router.get("/health", response_model=dict, summary="Health check endpoint")
-async def health_check():
+async def health_check(
+    request: Request
+):
     """
     Health check endpoint.
     
@@ -137,7 +152,10 @@ async def health_check():
     """
     try:
         # Test basic functionality
-        test_book = generator.generate_by_number(0)
+        generator = request.app.state.generator
+        cache = request.app.state.cache
+        
+        test_book = generator.generator.generate_by_number(0)
         
         return {
             "status": "healthy",
@@ -147,8 +165,9 @@ async def health_check():
             "checks": {
                 "book_generation": "ok",
                 "encoding": "ok",
-                "cache": "ok" if cache.get_stats().size >= 0 else "error",
-            }
+                "cache": "ok" if cache.cache.get_stats().size >= 0 else "error",
+            },
+            "monitoring": get_monitoring_status()
         }
         
     except Exception as e:
@@ -157,6 +176,7 @@ async def health_check():
 
 @router.get("/sample", response_model=list, summary="Get sample books")
 async def get_sample_books(
+    request: Request,
     count: int = 10
 ):
     """
@@ -172,6 +192,7 @@ async def get_sample_books(
         List of sample book data
     """
     try:
+        library = request.app.state.library
         samples = library.generate_sample_books(count)
         return [book.to_dict() for book in samples]
         

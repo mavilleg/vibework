@@ -1,7 +1,7 @@
 """
-API routes for the Library of Babel project.
+API routers for the Library of Babel.
 
-This package contains the FastAPI route handlers for the Library of Babel API.
+This package contains all the API route definitions.
 """
 
 from .books import router as books_router
