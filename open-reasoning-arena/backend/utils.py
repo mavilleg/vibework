@@ -2,7 +2,7 @@ import hashlib
 import secrets
 from passlib.context import CryptContext
 from typing import Optional
-from .models import Task, Solution, Score, Challenge, User
+from .models import Task, Solution, Score, Challenge, User, ModelFingerprint
 from .database import SessionLocal
 
 # Password hashing
@@ -83,6 +83,11 @@ def award_reputation_for_solution_submission(author_id: int) -> None:
 def award_reputation_for_scoring(reviewer_id: int) -> None:
     """Award reputation for scoring a solution."""
     update_reputation(reviewer_id, 2)
+
+
+def award_reputation_for_challenge_accepted(challenger_id: int) -> None:
+    """Award reputation when a challenge is accepted."""
+    update_reputation(challenger_id, 15)
 
 
 # Secret prompt for model fingerprinting
