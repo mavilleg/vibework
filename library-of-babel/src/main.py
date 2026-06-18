@@ -7,16 +7,35 @@ the Library of Babel API.
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from .config import get_config, AppConfig
+from .exceptions import LibraryOfBabelError
+from .monitoring import (
+    setup_monitoring, 
+    monitoring_server, 
+    MonitoredCache, 
+    MonitoredBookGenerator,
+    MonitoredSearch,
+    monitor_api_request,
+    API_REQUESTS,
+    ERRORS_TOTAL
+)
 from .api import books_router, search_router, stats_router
+
 
 # Configure logging
 logging.basicConfig(
@@ -28,6 +47,9 @@ logger = logging.getLogger(__name__)
 # Global instances
 config: AppConfig = None
 app: FastAPI = None
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -43,6 +65,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting Library of Babel API...")
     config = get_config()
     
+    # Setup monitoring
+    setup_monitoring()
+    
     logger.info(f"Configuration: {config.name} v{config.version}")
     logger.info(f"Environment: {config.environment}")
     logger.info(f"Debug mode: {config.debug}")
@@ -51,17 +76,40 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from .models.library import Library
     from .services.generation import BookGenerator
     from .services.cache import create_cache
+    from .services.search import BookSearch
     
     # Create global instances
     library = Library()
     generator = BookGenerator()
     cache = create_cache()
+    search_service = BookSearch()
+    
+    # Create monitored instances
+    monitored_cache = MonitoredCache(cache, cache_type=config.cache.backend)
+    monitored_generator = MonitoredBookGenerator(generator)
+    monitored_search = MonitoredSearch(search_service)
+    
+    # Store in app state
+    app.state.library = library
+    app.state.generator = monitored_generator
+    app.state.cache = monitored_cache
+    app.state.search_service = monitored_search
+    app.state.config = config
     
     logger.info("Services initialized")
     logger.info(f"Book configuration: {config.book.pages} pages, "
                 f"{config.book.lines_per_page} lines/page, "
                 f"{config.book.chars_per_line} chars/line")
     logger.info(f"Total possible books: {config.book.total_possible_books}")
+    
+    # Log security configuration
+    logger.info(f"Rate limiting: {config.security.rate_limit}")
+    logger.info(f"CORS origins: {config.security.cors_origins}")
+    logger.info(f"Authentication enabled: {config.security.enable_auth}")
+    
+    # Log monitoring configuration
+    logger.info(f"Prometheus enabled: {config.monitoring.prometheus_enabled}")
+    logger.info(f"JSON logging: {config.monitoring.json_logging}")
     
     yield
     
@@ -95,14 +143,28 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     
-    # Configure CORS
+    # Store limiter in app state
+    app.state.limiter = limiter
+    
+    # Configure CORS with security settings
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=config.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=config.security.cors_origins,
+        allow_credentials=config.security.cors_allow_credentials,
+        allow_methods=config.security.cors_allow_methods,
+        allow_headers=config.security.cors_allow_headers,
+        max_age=600,
     )
+    
+    # Add security headers middleware
+    if config.security.enable_security_headers:
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=["*"],  # Configure properly in production
+        )
+    
+    # Add rate limiting middleware
+    app.add_middleware(SlowAPIMiddleware)
     
     # Include API routers
     app.include_router(books_router)
@@ -115,15 +177,109 @@ def create_app() -> FastAPI:
     except Exception:
         pass
     
-    # Global exception handler
-    @app.exception_handler(Exception)
-    async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    # Global exception handlers
+    @app.exception_handler(LibraryOfBabelError)
+    async def library_of_babel_exception_handler(
+        request: Request, exc: LibraryOfBabelError
+    ) -> JSONResponse:
+        """Handle LibraryOfBabelError exceptions."""
+        ERRORS_TOTAL.labels(
+            error_type=type(exc).__name__,
+            endpoint=request.url.path
+        ).inc()
+        
+        # In production, don't expose details
+        if config.environment == "production" and not config.debug:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={
+                    "error": exc.code,
+                    "message": exc.message,
+                },
+            )
+        
         return JSONResponse(
-            status_code=500,
+            status_code=exc.status_code,
+            content=exc.to_dict(),
+        )
+    
+    @app.exception_handler(RateLimitExceeded)
+    async def rate_limit_exceeded_handler(
+        request: Request, exc: RateLimitExceeded
+    ) -> JSONResponse:
+        """Handle rate limit exceeded exceptions."""
+        ERRORS_TOTAL.labels(
+            error_type="RateLimitExceeded",
+            endpoint=request.url.path
+        ).inc()
+        
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             content={
-                "error": "Internal server error",
-                "detail": str(exc) if config.debug else "An unexpected error occurred",
+                "error": "RATE_LIMIT_EXCEEDED",
+                "message": str(exc.detail),
+                "retry_after": exc.retry_after,
+            },
+            headers={"Retry-After": str(exc.retry_after)},
+        )
+    
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Handle validation errors."""
+        ERRORS_TOTAL.labels(
+            error_type="RequestValidationError",
+            endpoint=request.url.path
+        ).inc()
+        
+        # In production, don't expose full validation details
+        if config.environment == "production" and not config.debug:
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                content={
+                    "error": "VALIDATION_ERROR",
+                    "message": "Request validation failed",
+                },
+            )
+        
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "error": "VALIDATION_ERROR",
+                "message": "Request validation failed",
+                "details": exc.errors(),
+            },
+        )
+    
+    @app.exception_handler(Exception)
+    async def global_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        """Global exception handler."""
+        ERRORS_TOTAL.labels(
+            error_type=type(exc).__name__,
+            endpoint=request.url.path
+        ).inc()
+        
+        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+        
+        # In production, don't expose internal error details
+        if config.environment == "production" and not config.debug:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={
+                    "error": "INTERNAL_SERVER_ERROR",
+                    "message": "An unexpected error occurred",
+                },
+            )
+        
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error": "INTERNAL_SERVER_ERROR",
+                "message": str(exc),
+                "type": type(exc).__name__,
             },
         )
     
@@ -140,6 +296,7 @@ def create_app() -> FastAPI:
             ),
             "docs": "/docs",
             "health": "/api/stats/health",
+            "environment": config.environment,
         }
     
     # Redirect to docs
@@ -153,6 +310,7 @@ def create_app() -> FastAPI:
                 "books": "/api/books",
                 "search": "/api/search",
                 "stats": "/api/stats",
+
             }
         }
     
@@ -173,4 +331,6 @@ if __name__ == "__main__":
         port=config.port,
         reload=config.debug,
         log_level="debug" if config.debug else "info",
+        # Enable access logging
+        access_log=True,
     )

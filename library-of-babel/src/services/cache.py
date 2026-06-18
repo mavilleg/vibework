@@ -8,9 +8,12 @@ reducing generation time and improving performance.
 import time
 import json
 import logging
+import zlib
+import pickle
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Dict, Optional, TypeVar, Generic
+from dataclasses import dataclass, field
+from typing import Dict, Optional, TypeVar, Generic, Any
+from collections import OrderedDict
 
 from ..config import get_config
 from ..models.book import Book
@@ -88,24 +91,31 @@ class BookCache(ABC, Generic[T]):
 
 class MemoryCache(BookCache[T]):
     """
-    In-memory cache implementation.
+    In-memory cache implementation using OrderedDict for LRU eviction.
     
     This is a simple LRU (Least Recently Used) cache that stores items
     in memory. It's suitable for development and single-instance deployments.
+    
+    Performance improvements:
+    - Uses OrderedDict for O(1) access and eviction
+    - Optional compression for large book objects
+    - Lazy loading support
     """
     
-    def __init__(self, max_size: int = 1000, ttl: int = 3600) -> None:
+    def __init__(self, max_size: int = 1000, ttl: int = 3600, 
+                 compression: bool = False) -> None:
         """
         Initialize the memory cache.
         
         Args:
             max_size: Maximum number of items to store
             ttl: Time-to-live in seconds for cached items
+            compression: Whether to compress cached book content
         """
         self.max_size = max_size
         self.default_ttl = ttl
-        self._cache: Dict[str, Dict[str, any]] = {}
-        self._access_order: list[str] = []
+        self.compression = compression
+        self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
         self.stats = CacheStats(max_size=max_size)
     
     def get(self, key: str) -> Optional[T]:
@@ -130,13 +140,18 @@ class MemoryCache(BookCache[T]):
             self.stats.misses += 1
             return None
         
-        # Update access time and move to end of access order
-        self._access_order.remove(key)
-        self._access_order.append(key)
+        # Update access time and move to end (mark as recently used)
+        self._cache.move_to_end(key)
         item["accessed_at"] = time.time()
         
+        # Decompress if needed
+        value = item["value"]
+        if isinstance(value, Book) and hasattr(value, '_compressed_content'):
+            value.content = zlib.decompress(value._compressed_content).decode('utf-8')
+            delattr(value, '_compressed_content')
+        
         self.stats.hits += 1
-        return item["value"]
+        return value
     
     def set(self, key: str, value: T, ttl: Optional[int] = None) -> None:
         """
@@ -153,6 +168,12 @@ class MemoryCache(BookCache[T]):
         
         expires_at = time.time() + (ttl if ttl is not None else self.default_ttl)
         
+        # Compress book content if enabled
+        if self.compression and isinstance(value, Book):
+            compressed_content = zlib.compress(value.content.encode('utf-8'))
+            value._compressed_content = compressed_content
+            value.content = ""  # Free memory
+        
         self._cache[key] = {
             "value": value,
             "expires_at": expires_at,
@@ -160,9 +181,8 @@ class MemoryCache(BookCache[T]):
             "created_at": time.time(),
         }
         
-        if key not in self._access_order:
-            self._access_order.append(key)
-        
+        # Move to end (mark as recently used)
+        self._cache.move_to_end(key)
         self.stats.size = len(self._cache)
     
     def delete(self, key: str) -> None:
@@ -174,15 +194,15 @@ class MemoryCache(BookCache[T]):
         """
         if key in self._cache:
             del self._cache[key]
-            if key in self._access_order:
-                self._access_order.remove(key)
             self.stats.size = len(self._cache)
     
     def clear(self) -> None:
         """Clear all items from the cache."""
         self._cache.clear()
-        self._access_order.clear()
         self.stats.size = 0
+        self.stats.hits = 0
+        self.stats.misses = 0
+        self.stats.evictions = 0
     
     def exists(self, key: str) -> bool:
         """
@@ -205,21 +225,40 @@ class MemoryCache(BookCache[T]):
         return True
     
     def _evict(self) -> None:
-        """Evict the least recently used item."""
-        if not self._access_order:
+        """Evict the least recently used item (O(1) with OrderedDict)."""
+        if not self._cache:
             return
         
         # Remove the first item (least recently used)
-        oldest_key = self._access_order.pop(0)
-        if oldest_key in self._cache:
-            del self._cache[oldest_key]
-            self.stats.evictions += 1
-            self.stats.size = len(self._cache)
+        oldest_key = next(iter(self._cache))
+        del self._cache[oldest_key]
+        self.stats.evictions += 1
+        self.stats.size = len(self._cache)
     
     def get_stats(self) -> CacheStats:
         """Get cache statistics."""
         self.stats.size = len(self._cache)
         return self.stats
+    
+    def cleanup_expired(self) -> int:
+        """
+        Remove all expired items from the cache.
+        
+        Returns:
+            Number of items removed
+        """
+        current_time = time.time()
+        keys_to_remove = [
+            key for key, item in self._cache.items()
+            if item["expires_at"] and item["expires_at"] < current_time
+        ]
+        
+        for key in keys_to_remove:
+            del self._cache[key]
+        
+        removed = len(keys_to_remove)
+        self.stats.size = len(self._cache)
+        return removed
 
 
 class RedisCache(BookCache[T]):
@@ -576,4 +615,8 @@ def create_cache() -> BookCache[Book]:
             pass
     
     # Default to memory cache
-    return MemoryCache(max_size=cache_config.max_size, ttl=cache_config.ttl)
+    return MemoryCache(
+        max_size=cache_config.max_size, 
+        ttl=cache_config.ttl,
+        compression=cache_config.compression
+    )

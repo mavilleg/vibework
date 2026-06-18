@@ -26,30 +26,28 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-          cache-dependency-path: 'library-of-babel/requirements.txt'
+          cache-dependency-path: 'requirements.txt'
 
       - name: Install dependencies
         run: |
-          cd library-of-babel
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio httpx pytest-cov
 
       - name: Run tests with coverage
         run: |
-          cd library-of-babel
-          python -m pytest tests/ -v --tb=short --cov=src --cov-report=xml
+          python -m pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=html
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: library-of-babel/coverage.xml
+          file: coverage.xml
           flags: unittests
           name: coverage-${{ matrix.python-version }}
 
   lint:
-    name: Linting
+    name: Linting and Code Quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -62,28 +60,27 @@ jobs:
 
       - name: Install linting tools
         run: |
-          cd library-of-babel
-          pip install black flake8 mypy isort
+          pip install black flake8 mypy isort pylint bandit safety
 
       - name: Run Black
         run: |
-          cd library-of-babel
-          black --check src/ tests/ --diff
+          black --check src/ tests/ --line-length=88 --diff
 
       - name: Run isort
         run: |
-          cd library-of-babel
-          isort --check-only src/ tests/
+          isort --check-only src/ tests/ --line-length=88 --profile=black
 
       - name: Run Flake8
         run: |
-          cd library-of-babel
-          flake8 src/ tests/ --max-line-length=88 --extend-ignore=E203
+          flake8 src/ tests/ --max-line-length=88 --extend-ignore=E203 --max-complexity=10
 
       - name: Run MyPy
         run: |
-          cd library-of-babel
-          mypy src/ --ignore-missing-imports --disallow-untyped-defs
+          mypy src/ --ignore-missing-imports --disallow-untyped-defs --line-length=88
+
+      - name: Run Pylint
+        run: |
+          pylint src/ --disable=C0114,C0115,C0116 --max-line-length=88 --exit-zero
 
   security:
     name: Security Scan
@@ -94,13 +91,11 @@ jobs:
 
       - name: Run Bandit
         run: |
-          cd library-of-babel
           pip install bandit
           bandit -r src/ -f json -o bandit-results.json || true
 
       - name: Run Safety
         run: |
-          cd library-of-babel
           pip install safety
           safety check -r requirements.txt --json || true
 
@@ -108,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: security-reports
-          path: library-of-babel/*.json
+          path: bandit-results.json
 
   build:
     name: Build Docker Image
@@ -117,12 +112,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
       - name: Build Docker image
-        run: |
-          cd library-of-babel
-          docker build -t library-of-babel:test .
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          tags: library-of-babel:test
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
 
       - name: Run container tests
         run: |
-          cd library-of-babel
           docker run --rm library-of-babel:test python -m pytest tests/ -v
