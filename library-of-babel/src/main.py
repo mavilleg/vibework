@@ -100,7 +100,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"Book configuration: {config.book.pages} pages, "
                 f"{config.book.lines_per_page} lines/page, "
                 f"{config.book.chars_per_line} chars/line")
-    logger.info(f"Total possible books: {config.book.total_possible_books}")
+    logger.info(f"Total possible books: {config.book.total_possible_books_notation}")
     
     # Log security configuration
     logger.info(f"Rate limiting: {config.security.rate_limit}")

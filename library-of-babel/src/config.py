@@ -39,30 +39,42 @@ class AzureConfig:
 @dataclass
 class BookConfig:
     """Configuration for book generation."""
-    
-    pages: int = int(os.getenv("BOOK_PAGES", "410"))
-    lines_per_page: int = int(os.getenv("BOOK_LINES_PER_PAGE", "40"))
-    chars_per_line: int = int(os.getenv("BOOK_CHARS_PER_LINE", "80"))
-    alphabet: str = os.getenv("ALPHABET", "abcdefghijklmnopqrstuvwxyz ,.")
-    
+
+    # Use default_factory so that reload_config() picks up updated env vars.
+    pages: int = field(default_factory=lambda: int(os.getenv("BOOK_PAGES", "410")))
+    lines_per_page: int = field(default_factory=lambda: int(os.getenv("BOOK_LINES_PER_PAGE", "40")))
+    chars_per_line: int = field(default_factory=lambda: int(os.getenv("BOOK_CHARS_PER_LINE", "80")))
+    alphabet: str = field(default_factory=lambda: os.getenv("ALPHABET", "abcdefghijklmnopqrstuvwxyz ,."))
+
     # Performance settings
-    max_book_size_mb: int = int(os.getenv("MAX_BOOK_SIZE_MB", "10"))
-    lazy_loading: bool = os.getenv("LAZY_LOADING", "true").lower() == "true"
-    
+    max_book_size_mb: int = field(default_factory=lambda: int(os.getenv("MAX_BOOK_SIZE_MB", "10")))
+    lazy_loading: bool = field(default_factory=lambda: os.getenv("LAZY_LOADING", "true").lower() == "true")
+
     @property
     def total_chars(self) -> int:
         """Calculate total characters per book."""
         return self.pages * self.lines_per_page * self.chars_per_line
-    
+
     @property
     def alphabet_size(self) -> int:
         """Get the size of the alphabet."""
         return len(self.alphabet)
-    
+
     @property
     def total_possible_books(self) -> int:
         """Calculate total possible books (theoretical)."""
         return self.alphabet_size ** self.total_chars
+
+    @property
+    def total_possible_books_notation(self) -> str:
+        """Return total possible books as scientific notation string.
+
+        Avoids converting an astronomically large integer to a string, which
+        would exceed Python's integer-to-string conversion limit and be very slow.
+        """
+        import math
+        exponent = self.total_chars * math.log10(self.alphabet_size)
+        return f"~10^{exponent:.0f}"
     
     def validate(self) -> None:
         """Validate the book configuration."""

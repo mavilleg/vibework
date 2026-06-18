@@ -29,9 +29,9 @@ def client():
 @pytest.fixture
 def small_book_config():
     """Configure the app with small book sizes for faster testing."""
-    os.environ["BOOK_PAGES"] = "2"
-    os.environ["BOOK_LINES_PER_PAGE"] = "2"
-    os.environ["BOOK_CHARS_PER_LINE"] = "10"
+    os.environ["BOOK_PAGES"] = "1"
+    os.environ["BOOK_LINES_PER_PAGE"] = "1"
+    os.environ["BOOK_CHARS_PER_LINE"] = "6"
     os.environ["ALPHABET"] = "abc"
     
     from src.config import reload_config
@@ -46,6 +46,10 @@ def small_book_config():
     del os.environ["BOOK_LINES_PER_PAGE"]
     del os.environ["BOOK_CHARS_PER_LINE"]
     del os.environ["ALPHABET"]
+    
+    # Reload config to restore defaults so subsequent tests are not affected
+    from src.config import reload_config
+    reload_config()
 
 
 class TestRootEndpoints:
@@ -179,54 +183,48 @@ class TestBookEndpointsWithSmallConfig:
 class TestSearchEndpoints:
     """Tests for search endpoints."""
     
-    def test_search_books(self, client):
+    def test_search_books(self, small_book_config):
         """Test searching for books."""
-        response = client.get("/api/search?q=test")
+        response = small_book_config.get("/api/search?q=test")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
     
-    def test_search_empty_query(self, client):
+    def test_search_empty_query(self, small_book_config):
         """Test searching with empty query."""
-        response = client.get("/api/search?q=")
+        response = small_book_config.get("/api/search?q=")
         assert response.status_code == 400
     
-    def test_search_invalid_strategy(self, client):
+    def test_search_invalid_strategy(self, small_book_config):
         """Test searching with invalid strategy."""
-        response = client.get("/api/search?q=test&strategy=invalid")
+        response = small_book_config.get("/api/search?q=test&strategy=invalid")
         assert response.status_code == 400
     
-    def test_search_regex(self, client):
+    def test_search_regex(self, small_book_config):
         """Test regex search."""
-        response = client.get("/api/search/regex?pattern=test")
+        response = small_book_config.get("/api/search/regex?pattern=test")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
     
-    def test_search_regex_dangerous_pattern(self, client):
+    def test_search_regex_dangerous_pattern(self, small_book_config):
         """Test regex search with dangerous pattern."""
         # Pattern with catastrophic backtracking potential
-        response = client.get("/api/search/regex?pattern=.*a")
+        response = small_book_config.get("/api/search/regex?pattern=.*a")
         assert response.status_code == 400
     
-    def test_search_regex_too_long(self, client):
+    def test_search_regex_too_long(self, small_book_config):
         """Test regex search with pattern that's too long."""
         long_pattern = "a" * 101  # Max is 50 by default
-        response = client.get(f"/api/search/regex?pattern={long_pattern}")
+        response = small_book_config.get(f"/api/search/regex?pattern={long_pattern}")
         assert response.status_code == 400
     
-    def test_find_similar(self, client):
-        """Test finding similar books."""
-        # Use a valid book ID format (this might fail with default config)
-        response = client.get("/api/books/number/0")
-        if response.status_code == 200:
-            book_data = response.json()
-            book_id = book_data["book_id"]
-            
-            response = client.get(f"/api/search/similar/{book_id}")
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
+    def test_find_similar(self, small_book_config):
+        """Test finding similar books by book number."""
+        response = small_book_config.get("/api/search/similar?book_number=0")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
 
 class TestStatsEndpoints:

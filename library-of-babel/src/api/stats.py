@@ -43,7 +43,7 @@ async def get_library_stats(
                 "environment": config.environment,
             },
             "books": {
-                "total_possible": str(stats.total_possible_books),
+                "total_possible": stats.total_possible_books,
                 "cached": stats.cached_books,
                 "storage_used_bytes": stats.storage_used_bytes,
                 "storage_used_gb": round(stats.storage_used_bytes / (1024**3), 6),
@@ -106,7 +106,7 @@ async def get_config_stats():
                 "alphabet": config.book.alphabet,
                 "alphabet_size": config.book.alphabet_size,
                 "total_chars": config.book.total_chars,
-                "total_possible_books": str(config.book.total_possible_books),
+                "total_possible_books": config.book.total_possible_books_notation,
                 "lazy_loading": config.book.lazy_loading,
             },
             "cache": {
