@@ -223,6 +223,28 @@ AUTH_USERS_REGISTERED = Counter(
 )
 
 
+# WebSocket metrics
+WS_CONNECTIONS = Gauge(
+    "ora_websocket_connections",
+    "Number of active WebSocket connections",
+)
+
+WS_MESSAGES_SENT = Counter(
+    "ora_websocket_messages_sent_total",
+    "Total number of WebSocket messages sent",
+)
+
+WS_MESSAGES_RECEIVED = Counter(
+    "ora_websocket_messages_received_total",
+    "Total number of WebSocket messages received",
+)
+
+WS_ERRORS = Counter(
+    "ora_websocket_errors_total",
+    "Total number of WebSocket errors",
+)
+
+
 # ==================== MONITORING MIDDLEWARE ====================
 
 class MonitoringMiddleware:

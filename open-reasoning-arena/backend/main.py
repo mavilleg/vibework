@@ -2,6 +2,7 @@
 Open Reasoning Arena (ORA) - Main FastAPI Application.
 
 This module provides the main FastAPI application with endpoints for:
+- Authentication: User registration, login, logout, token refresh
 - Users: User management and profiles
 - Tasks: Reasoning tasks for models to solve
 - Solutions: Model solutions to tasks
@@ -11,15 +12,18 @@ This module provides the main FastAPI application with endpoints for:
 - Model Fingerprints: Model verification
 
 Security features:
+- JWT-based authentication with role-based access control (RBAC)
 - Rate limiting per endpoint type
 - CORS restriction to configured origins
 - Input validation with configurable limits
 - Custom exception handling
+- Token blacklisting for secure logout
 
 Performance features:
 - Caching for read operations (tasks, solutions, leaderboard)
 - Database connection pooling
 - OrderedDict-based LRU cache
+- Redis cache backend for production deployments
 """
 
 import json
@@ -57,6 +61,31 @@ from .cache import (
     get_solutions_cache,
     get_leaderboard_cache,
     clear_all_caches,
+)
+from .auth import (
+    User,
+    UserCreate,
+    UserInDB,
+    Token,
+    TokenData,
+    UserRole,
+    TokenType,
+    get_current_user,
+    get_current_active_user,
+    get_optional_user,
+    get_user_with_roles,
+    get_user_with_all_roles,
+    create_user,
+    authenticate_user,
+    create_access_token,
+    create_refresh_token,
+    refresh_access_token,
+    logout_user,
+    security,
+    pwd_context,
+    AUTH_LOGIN_ATTEMPTS,
+    AUTH_USERS_REGISTERED,
+    increment_auth_success,
 )
 from .seed_tasks import SEED_TASKS
 from .monitoring import (
@@ -418,6 +447,144 @@ def get_leaderboard_limiter():
 
 
 # ==================== USER ENDPOINTS ====================
+
+
+
+# ==================== AUTHENTICATION ROUTES ====================
+
+@app.post("/auth/register", response_model=Token, tags=["authentication"])
+@limiter.limit(config.security.rate_limit)
+async def register_user(
+    user_data: UserCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Token:
+    """
+    Register a new user.
+    
+    Creates a new user account with the provided credentials and returns
+    access and refresh tokens for immediate authentication.
+    """
+    try:
+        # Create user
+        user = create_user(db, user_data)
+        
+        # Create tokens
+        access_token, access_expires_in = create_access_token(user)
+        refresh_token, refresh_expires_in = create_refresh_token(user)
+        
+        # Track user registration
+        AUTH_USERS_REGISTERED.inc()
+        increment_auth_success("register")
+        
+        logger.info(f"User registered: {user.username}")
+        
+        return Token(
+            access_token=access_token,
+            token_type="bearer",
+            expires_in=access_expires_in,
+            refresh_token=refresh_token,
+            refresh_expires_in=refresh_expires_in,
+        )
+        
+    except Exception as e:
+        logger.error(f"Registration failed: {str(e)}")
+        raise
+
+
+@app.post("/auth/login", response_model=Token, tags=["authentication"])
+@limiter.limit(config.security.rate_limit)
+async def login_user(
+    username: str,
+    password: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Token:
+    """
+    Authenticate a user and return access tokens.
+    
+    Validates user credentials and returns JWT tokens for authentication.
+    """
+    # Authenticate user
+    user = authenticate_user(db, username, password)
+    
+    if not user:
+        AUTH_LOGIN_ATTEMPTS.labels(status="failure").inc()
+        raise AuthenticationError("Invalid username or password")
+    
+    # Create tokens
+    access_token, access_expires_in = create_access_token(user)
+    refresh_token, refresh_expires_in = create_refresh_token(user)
+    
+    # Track successful login
+    AUTH_LOGIN_ATTEMPTS.labels(status="success").inc()
+    increment_auth_success("login")
+    
+    logger.info(f"User logged in: {user.username}")
+    
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=access_expires_in,
+        refresh_token=refresh_token,
+        refresh_expires_in=refresh_expires_in,
+    )
+
+
+@app.post("/auth/refresh", response_model=Token, tags=["authentication"])
+@limiter.limit(config.security.rate_limit)
+async def refresh_token(
+    refresh_token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Token:
+    """
+    Refresh access token using a valid refresh token.
+    
+    Returns new access and refresh tokens, invalidating the old refresh token.
+    """
+    return await refresh_access_token(refresh_token, db)
+
+
+@app.post("/auth/logout", tags=["authentication"])
+@limiter.limit(config.security.rate_limit)
+async def logout(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, str]:
+    """
+    Logout the current user by blacklisting their access token.
+    
+    Invalidates the current access token, requiring re-authentication.
+    """
+    return await logout_user(request)
+
+
+@app.get("/auth/me", response_model=User, tags=["authentication"])
+@limiter.limit(config.security.rate_limit)
+async def get_current_user_profile(
+    current_user: UserInDB = Depends(get_current_user),
+) -> User:
+    """
+    Get the current authenticated user's profile.
+    
+    Returns user information for the currently authenticated user.
+    """
+    return User.model_validate(current_user)
+
+
+# ==================== USER MANAGEMENT ROUTES ====================
+
+@app.get("/users/me", response_model=User, tags=["users"])
+@limiter.limit(config.security.rate_limit)
+async def get_me(
+    current_user: UserInDB = Depends(get_current_user),
+) -> User:
+    """
+    Get current user profile (alias for /auth/me).
+    """
+    return User.model_validate(current_user)
+
 
 @app.post("/users/", response_model=schemas.User)
 @limiter.limit(config.security.rate_limit)
