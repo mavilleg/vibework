@@ -310,7 +310,12 @@ class TestBuildLibraryTemplate:
     def test_schema_present(self, template):
         d = template.to_dict()
         assert "$schema" in d
-        assert "deploymentTemplate" in d["$schema"]
+        # Verify the full expected schema URL exactly rather than a substring check
+        expected = (
+            "https://schema.management.azure.com/schemas/"
+            "2019-04-01/deploymentTemplate.json#"
+        )
+        assert d["$schema"] == expected
 
     def test_required_parameters_present(self, template):
         for name in (

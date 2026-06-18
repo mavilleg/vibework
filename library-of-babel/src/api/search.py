@@ -28,6 +28,10 @@ def get_search_service(request: Request):
 @limiter.limit("20/minute")
 async def search_books(
     request: Request,
+    # Note: we intentionally omit min_length=1 here.  FastAPI's Query
+    # validator would return HTTP 422 for an empty string, but the API
+    # contract specifies HTTP 400 for validation errors.  The empty-query
+    # check below returns 400 via the custom InvalidSearchQueryError handler.
     q: str = Query(..., description="Text to search for"),
     limit: int = Query(10, ge=1, le=50, description="Maximum number of results"),
     strategy: str = Query("sequential", description="Search strategy: sequential, random, or smart")
@@ -125,7 +129,13 @@ async def search_regex(
             f"Pattern too long. Maximum length is {config.security.max_regex_length} characters."
         )
     
-    # Check for potentially dangerous regex patterns (simple substring check)
+    # Check for potentially dangerous regex patterns (simple substring check).
+    # Python's `re` module does not support a timeout parameter, so we
+    # proactively filter known ReDoS-prone constructs.  This is not
+    # exhaustive — complex nested quantifiers may still be pathological —
+    # but covers the most common attack patterns.  Further hardening (e.g.
+    # running compilation in a subprocess with a wall-clock timeout) is
+    # possible but outside the scope of this service.
     dangerous_constructs = [
         ".*",   # .* - can cause catastrophic backtracking
         ".+",   # .+ - can cause catastrophic backtracking
