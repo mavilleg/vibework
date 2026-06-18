@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Open Reasoning Arena - A dynamic, adversarial benchmark for LLM reasoning">
+    <title>{% block title %}Open Reasoning Arena{% endblock %}</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Hyperscript (optional, for more complex interactions) -->
+    <script src="https://unpkg.com/hyperscript.org@0.9.15"></script>
+    
+    <style>
+        /* Custom styles */
+        .category-math { background-color: #dbeafe; color: #1e40af; }
+        .category-logic { background-color: #dcfce7; color: #166534; }
+        .category-code { background-color: #fef3c7; color: #92400e; }
+        .category-language { background-color: #f3e8ff; color: #6b21a8; }
+        .category-reasoning { background-color: #fee2e2; color: #991b1b; }
+        
+        .difficulty-1 { background-color: #dcfce7; color: #166534; }
+        .difficulty-2 { background-color: #bbf7d0; color: #059669; }
+        .difficulty-3 { background-color: #fef3c7; color: #d97706; }
+        .difficulty-4 { background-color: #fed7aa; color: #ea580c; }
+        .difficulty-5 { background-color: #fee2e2; color: #dc2626; }
+        
+        .task-card { transition: transform 0.2s, box-shadow 0.2s; }
+        .task-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        
+        .btn-primary { 
+            background-color: #4f46e5; 
+            color: white; 
+            transition: background-color 0.2s; 
+        }
+        .btn-primary:hover { background-color: #4338ca; }
+        
+        .btn-secondary { 
+            background-color: #f3f4f6; 
+            color: #374151; 
+            transition: background-color 0.2s; 
+        }
+        .btn-secondary:hover { background-color: #e5e7eb; }
+        
+        /* Loading spinner */
+        .loading { 
+            display: inline-block; 
+            width: 20px; 
+            height: 20px; 
+            border: 3px solid rgba(255,255,255,.3); 
+            border-radius: 50%; 
+            border-top-color: #fff; 
+            animation: spin 1s ease-in-out infinite; 
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Toast notifications */
+        .toast { 
+            position: fixed; 
+            bottom: 20px; 
+            right: 20px; 
+            padding: 16px 24px; 
+            border-radius: 8px; 
+            z-index: 1000; 
+            animation: slideIn 0.3s ease-out; 
+        }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        
+        /* Smooth page transitions */
+        html { scroll-behavior: smooth; }
+    </style>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/" class="flex items-center space-x-2">
+                        <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <span class="text-xl font-bold text-gray-900">Open Reasoning Arena</span>
+                    </a>
+                </div>
+                
+                <div class="flex items-center space-x-6">
+                    <a href="/" class="text-gray-600 hover:text-gray-900 font-medium">Home</a>
+                    <a href="/tasks/" class="text-gray-600 hover:text-gray-900 font-medium">Tasks</a>
+                    <a href="/leaderboard/" class="text-gray-600 hover:text-gray-900 font-medium">Leaderboard</a>
+                    <a href="/submit-task" class="text-gray-600 hover:text-gray-900 font-medium">Submit Task</a>
+                    <a href="/docs" class="text-gray-600 hover:text-gray-900 font-medium">API Docs</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Open Reasoning Arena</h3>
+                    <p class="text-gray-400 text-sm">A dynamic, adversarial benchmark for evaluating LLM reasoning capabilities.</p>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Quick Links</h3>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="/tasks/" class="text-gray-400 hover:text-white">Browse Tasks</a></li>
+                        <li><a href="/leaderboard/" class="text-gray-400 hover:text-white">Leaderboard</a></li>
+                        <li><a href="/submit-task" class="text-gray-400 hover:text-white">Submit Task</a></li>
+                        <li><a href="/health" class="text-gray-400 hover:text-white">Health Check</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Resources</h3>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="/docs" class="text-gray-400 hover:text-white">API Documentation</a></li>
+                        <li><a href="https://github.com/mavilleg/vibework" class="text-gray-400 hover:text-white">GitHub</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-gray-800 mt-8 pt-8 text-center text-sm text-gray-400">
+                <p>&copy; 2024 Open Reasoning Arena. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Toast Notification Area -->
+    <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+    
+    <!-- HTMX Indicators -->
+    <div class="htmx-indicator" style="display:none">
+        <div class="fixed top-4 right-4 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-lg">
+            Loading...
+        </div>
+    </div>
+    
+    <script>
+        // Toast notification helper
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type} bg-${type === 'error' ? 'red-500' : type === 'success' ? 'green-500' : 'blue-500'}`;
+            toast.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="text-white hover:text-gray-200">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+        
+        // HTMX event handlers
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            // Show loading indicator
+            const indicator = document.querySelector('.htmx-indicator');
+            if (indicator) indicator.style.display = 'block';
+        });
+        
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            // Hide loading indicator
+            const indicator = document.querySelector('.htmx-indicator');
+            if (indicator) indicator.style.display = 'none';
+            
+            // Show success toast for successful requests
+            if (evt.detail.successful && !evt.detail.requestConfig.headers['X-No-Toast']) {
+                showToast('Request completed successfully', 'success');
+            }
+        });
+        
+        document.body.addEventListener('htmx:responseError', function(evt) {
+            // Show error toast
+            const error = evt.detail.xhr.statusText || 'An error occurred';
+            showToast(`Error: ${error}`, 'error');
+        });
+    </script>
+    
+    {% block extra_body %}{% endblock %}
+</body>
+</html>
